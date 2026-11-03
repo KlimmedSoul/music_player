@@ -26,7 +26,7 @@ async def refresh(client: httpx.AsyncClient, source: str | None = None) -> dict:
             continue
         try:
             tracks, playlists = await conn.fetch_library(client)
-            with db().execute("BEGIN"):
+            with db():
                 for t in tracks:
                     db().execute(
                         """INSERT INTO tracks(source,external_id,dedup_key,title,artist,
@@ -102,7 +102,7 @@ def list_tracks(q: str = "", source: str = "all", cursor: int = 0, limit: int = 
         rows = conn.execute(
             "SELECT * FROM tracks WHERE dedup_key=? ORDER BY source", (key,)
         ).fetchall()
-        primary = rows[0]
+        primary = next((r for r in rows if r["source"] == source), rows[0])
         d = _row_to_dict(primary)
         d["sources"] = [r["source"] for r in rows]
         items.append(d)
@@ -138,7 +138,7 @@ async def ensure_playlist_tracks(client: httpx.AsyncClient, source: str, ext: st
     if not conn or not hasattr(conn, "fetch_playlist_tracks"):
         raise SourceUnavailable(f"{source}: плейлисты не поддерживаются")
     tracks = await conn.fetch_playlist_tracks(client, ext)
-    with db().execute("BEGIN"):
+    with db():
         for i, t in enumerate(tracks):
             db().execute(
                 """INSERT INTO tracks(source,external_id,dedup_key,title,artist,

@@ -20,7 +20,9 @@ class Settings:
     sc_client_id = os.getenv("SOUNDCLOUD_CLIENT_ID", "").strip()
     spotify_client_id = os.getenv("SPOTIFY_CLIENT_ID", "").strip()
     spotify_client_secret = os.getenv("SPOTIFY_CLIENT_SECRET", "").strip()
-    spotify_redirect_uri = os.getenv("SPOTIFY_REDIRECT_URI", "http://localhost:8600/callback")
+    spotify_redirect_uri = os.getenv(
+        "SPOTIFY_REDIRECT_URI", f"http://localhost:{port}/auth/spotify/callback"
+    )
     # долгоживущий refresh-токен: один раз получили локально (/auth/spotify/start),
     # вписали сюда — и вход больше не нужен (важно для облака без диска)
     spotify_refresh_token = os.getenv("SPOTIFY_REFRESH_TOKEN", "").strip()

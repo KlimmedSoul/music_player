@@ -37,7 +37,7 @@ def clean_title(title: str) -> str:
     t = title.lower().strip()
     t = re.sub(r"[\(\)\[\]{}]", " ", t)
     t = re.sub(r"\b(official( audio| video)?|lyrics?|hq|audio)\b", " ", t)
-    t = re.sub(r"[feat\.|ft\.?].*$", " ", t)
+    t = re.sub(r"\b(?:feat\.?|ft\.?)\s+.*$", " ", t)
     t = re.sub(r"\s+", " ", t).strip()
     return t
 
