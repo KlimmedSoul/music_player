@@ -2,5 +2,5 @@ fastapi>=0.115
 uvicorn[standard]>=0.30
 httpx>=0.27
 python-dotenv>=1.0
-# опционально, для резолвера Spotify через YouTube:
-# yt-dlp>=2025.1.1
+# yt-dlp — нужен для полного звука Spotify и источника YouTube Music:
+yt-dlp>=2025.1.1

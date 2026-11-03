@@ -86,6 +86,18 @@ app/
 открытого прокси); бэкенд за паролем+туннелем (Tailscale/Cloudflare),
 наружу из домашней сети его лучше не выставлять.
 
+### YouTube Music
+Полный звук + лайки через `yt-dlp` (уже в requirements/Dockerfile).
+Для «Мне нравится» нужны **cookies браузера**, залогиненного в music.youtube.com:
+1. В Chrome/Firefox поставить расширение «Get cookies.txt LOCALLY».
+2. Открыть music.youtube.com (залогиненным) → экспортировать cookies.txt.
+3. Локально: `YTM_COOKIES_FILE=/путь/к/cookies.txt`.
+   В облаке (Render): `YTM_COOKIES_B64=$(base64 -w0 cookies.txt)` — одна
+   переменная вместо файла.
+Cookies протухают через ~месяц: refresh начнёт возвращать «Sign in» —
+экспортировать заново. Плейлисты YTM подтягиваются best-effort
+(вкладка «Плейлисты» библиотеки).
+
 ## Деплой в облако (бесплатно, без домашнего ПК)
 
 Бэкенд stateless: токены в env, SQLite — временный кэш (при рестарте

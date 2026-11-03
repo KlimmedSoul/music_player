@@ -6,12 +6,13 @@ import httpx
 
 from .connectors.base import SourceUnavailable, Track, dedup_key
 from .db import db, now
-from .connectors import SoundCloudConnector, SpotifyConnector, VKConnector
+from .connectors import SoundCloudConnector, SpotifyConnector, VKConnector, YouTubeMusicConnector
 
 CONNECTORS = {
     "vk": VKConnector(),
     "soundcloud": SoundCloudConnector(),
     "spotify": SpotifyConnector(),
+    "ytmusic": YouTubeMusicConnector(),
 }
 
 

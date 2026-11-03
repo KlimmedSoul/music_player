@@ -26,6 +26,9 @@ class Settings:
     # долгоживущий refresh-токен: один раз получили локально (/auth/spotify/start),
     # вписали сюда — и вход больше не нужен (важно для облака без диска)
     spotify_refresh_token = os.getenv("SPOTIFY_REFRESH_TOKEN", "").strip()
+    # YouTube Music: cookies браузера (см. README), файл или base64 для облака
+    ytm_cookies_file = os.getenv("YTM_COOKIES_FILE", "").strip()
+    ytm_cookies_b64 = os.getenv("YTM_COOKIES_B64", "").strip()
 
     db_path = os.getenv("DB_PATH", "data.db")
     media_cache_dir = os.getenv("MEDIA_CACHE_DIR", "./cache/media")

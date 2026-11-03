@@ -29,3 +29,5 @@ services:
         sync: false
       - key: SPOTIFY_REFRESH_TOKEN
         sync: false
+      - key: YTM_COOKIES_B64
+        sync: false

@@ -14,6 +14,7 @@ const names = {
   vk: "VK",
   soundcloud: "SoundCloud",
   spotify: "Spotify",
+  ytmusic: "YouTube Music",
   all: "Все",
 };
 const api = new MusicAPI();
@@ -418,7 +419,7 @@ async function sync() {
 function settings() {
   const configured = (key) => state.status[key] === "configured";
   showModal(
-    `<span class="eyebrow">ТВОИ ИСТОЧНИКИ</span><h2>Вместе звучит лучше.</h2><p>Подключение и синхронизация музыкальных сервисов.</p><div class="source-list">${["vk", "soundcloud", "spotify"].map((key) => `<div class="source-item"><strong>${names[key]}</strong><span class="status-dot ${configured(key) ? "ready" : ""}"></span><small>${configured(key) ? (key === "spotify" ? (state.status.spotify_logged_in ? "Подключён" : "Можно выполнить вход") : "Настроен") : "Не настроен"}</small></div>${state.refreshResults[key] ? `<p class="sync-result">${escapeHtml(state.refreshResults[key])}</p>` : ""}`).join("")}</div>${configured("spotify") ? '<button class="primary-button" data-action="spotify">Подключить Spotify</button><p id="spotify-result" role="status"></p>' : ""}<button class="load-more" data-action="refresh">Обновить библиотеку</button><p class="settings-note">VK и SoundCloud подключаются токенами в настройках сервера. Для Spotify нужен настроенный Redirect URI.</p><p class="server-address">${escapeHtml(api.base)}</p><button class="text-button" data-action="logout">Выйти / сменить сервер ${icon("arrow")}</button>`,
+    `<span class="eyebrow">ТВОИ ИСТОЧНИКИ</span><h2>Вместе звучит лучше.</h2><p>Подключение и синхронизация музыкальных сервисов.</p><div class="source-list">${["vk", "soundcloud", "spotify", "ytmusic"].map((key) => `<div class="source-item"><strong>${names[key]}</strong><span class="status-dot ${configured(key) ? "ready" : ""}"></span><small>${configured(key) ? (key === "spotify" ? (state.status.spotify_logged_in ? "Подключён" : "Можно выполнить вход") : "Настроен") : "Не настроен"}</small></div>${state.refreshResults[key] ? `<p class="sync-result">${escapeHtml(state.refreshResults[key])}</p>` : ""}`).join("")}</div>${configured("spotify") ? '<button class="primary-button" data-action="spotify">Подключить Spotify</button><p id="spotify-result" role="status"></p>' : ""}<button class="load-more" data-action="refresh">Обновить библиотеку</button><p class="settings-note">VK и SoundCloud подключаются токенами в настройках сервера. Для Spotify нужен настроенный Redirect URI.</p><p class="server-address">${escapeHtml(api.base)}</p><button class="text-button" data-action="logout">Выйти / сменить сервер ${icon("arrow")}</button>`,
   );
 }
 async function spotify(button) {
