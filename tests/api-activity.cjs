@@ -23,3 +23,9 @@ test('queued history from a previous account is not posted to the new account',a
  await tick();api.base='https://new.example';api.token='new';complete({ok:true});
  await Promise.all([first,old]);assert.deepEqual(calls,['/positions']);
 });
+test('refresh is serialized in the resolve request body',async()=>{
+ const api=makeAPI();let body;
+ api.request=(_path,options)=>{body=options.body;return Promise.resolve({});};
+ await api.resolve(track,{refresh:true});
+ assert.equal(body.refresh,true);assert.equal(body.full_only,true);
+});

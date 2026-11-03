@@ -214,7 +214,7 @@ async def resolve(request: Request, body: dict):
     if not source or not ext:
         raise HTTPException(400, "нужны source и external_id")
     try:
-        return await library.resolve(client(request), source, str(ext), full_only=body.get("full_only") is True)
+        return await library.resolve(client(request), source, str(ext), full_only=body.get("full_only") is True, refresh=body.get("refresh") is True)
     except SourceUnavailable as e:
         raise HTTPException(502, str(e))
     except (httpx.HTTPError, ValueError):

@@ -152,13 +152,15 @@ async def ensure_playlist_tracks(client: httpx.AsyncClient, source: str, ext: st
     return playlist_tracks(source,ext)
 
 
-async def resolve(client: httpx.AsyncClient, source: str, external_id: str, full_only: bool = False) -> dict:
+async def resolve(client: httpx.AsyncClient, source: str, external_id: str, full_only: bool = False, refresh: bool = False) -> dict:
     """source+ext -> {stream_path | stream_url, kind}. Кэш URL с TTL."""
+    cache_key = f"{source}|{external_id}" + ("|full" if full_only else "")
     with transaction() as sql:
+        if refresh:
+            sql.execute("DELETE FROM url_cache WHERE key=?", (cache_key,))
         sql.execute("DELETE FROM url_cache WHERE expires_at<=?", (now(),))
         sql.execute("DELETE FROM issued_streams WHERE created_at<=?", (now()-86400,))
-    cache_key = f"{source}|{external_id}" + ("|full" if full_only else "")
-    row = fetch_one(
+    row = None if refresh else fetch_one(
         "SELECT * FROM url_cache WHERE key=? AND expires_at>?", (cache_key, now())
     )
     if not row:
@@ -182,15 +184,16 @@ async def resolve(client: httpx.AsyncClient, source: str, external_id: str, full
             resolved = await conn.resolve(client, external_id)
         with transaction():
             db().execute(
-                "INSERT INTO url_cache(key,stream_url,kind,expires_at) VALUES(?,?,?,?) "
+                "INSERT INTO url_cache(key,stream_url,kind,expires_at,content_type) VALUES(?,?,?,?,?) "
                 "ON CONFLICT(key) DO UPDATE SET stream_url=excluded.stream_url,"
-                " kind=excluded.kind, expires_at=excluded.expires_at",
-                (cache_key, resolved.stream_url, resolved.kind, now() + resolved.ttl_s),
+                " kind=excluded.kind, expires_at=excluded.expires_at, content_type=excluded.content_type",
+                (cache_key, resolved.stream_url, resolved.kind, now() + resolved.ttl_s, resolved.content_type),
             )
-        row = {"stream_url": resolved.stream_url, "kind": resolved.kind}
+        row = {"stream_url":resolved.stream_url, "kind":resolved.kind, "content_type":resolved.content_type}
 
+    media = {"content_type":row["content_type"]} if row["content_type"] else {}
     if row["kind"] == "direct":
-        return {"kind": "direct", "stream_url": row["stream_url"]}
+        return {"kind":"direct", "stream_url":row["stream_url"], **media}
     # выдаём одноразовый токен на прокси + добавляем хост в allowlist
     token = uuid.uuid4().hex
     with transaction():
@@ -198,7 +201,7 @@ async def resolve(client: httpx.AsyncClient, source: str, external_id: str, full
             "INSERT INTO issued_streams(token,url,created_at) VALUES(?,?,?)",
             (token, row["stream_url"], now()),
         )
-    return {"kind": "proxy", "stream_path": f"/stream/{token}"}
+    return {"kind":"proxy", "stream_path":f"/stream/{token}", **media}
 
 
 @synchronized

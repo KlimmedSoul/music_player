@@ -37,3 +37,18 @@ test('next waits for the existing prefetch without issuing a second resolve',asy
   await loading;
   assert.equal(calls,1);assert.equal(player.audio.src,'https://a.example/full.mp3');
 });
+test('audio error retry requests a fresh provider URL',async()=>{
+ const calls=[];
+ const api={base:'https://a.example',token:'same',resolve:(_track,options)=>{calls.push(options);return Promise.resolve({kind:'direct',stream_url:'https://a.example/audio-'+calls.length});}};
+ const player=makePlayer(api);await player.select([tracks[0]],0);
+ player.audio.dispatchEvent(new Event('error'));
+ await new Promise(r=>setImmediate(r));
+ assert.equal(calls.length,2);assert.equal(calls[0].refresh,false);assert.equal(calls[1].refresh,true);
+ assert.equal(player.audio.src,'https://a.example/audio-2');
+});
+test('extensionless HLS is detected by MIME type before playback',async()=>{
+ const api={base:'https://a.example',token:'same',resolve:()=>Promise.resolve({kind:'direct',stream_url:'https://a.example/signed',content_type:'application/vnd.apple.mpegurl'})};
+ const player=makePlayer(api);let message='';player.addEventListener('error',event=>message=event.detail);
+ await player.select([tracks[0]],0);
+ assert.match(message,/HLS/);assert.equal(player.audio.src,'');
+});

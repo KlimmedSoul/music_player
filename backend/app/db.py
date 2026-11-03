@@ -55,7 +55,8 @@ CREATE TABLE IF NOT EXISTS url_cache (
     key TEXT PRIMARY KEY,           -- source|external_id
     stream_url TEXT NOT NULL,
     kind TEXT NOT NULL DEFAULT 'proxy',   -- proxy | direct
-    expires_at REAL NOT NULL
+    expires_at REAL NOT NULL,
+    content_type TEXT
 );
 
 -- выданные токены на /stream/<token> (защита от открытого прокси)
@@ -142,6 +143,8 @@ def db() -> sqlite3.Connection:
             conn.executescript(SCHEMA)
             if "tracks_loaded" not in {row[1] for row in conn.execute("PRAGMA table_info(playlists)")}:
                 conn.execute("ALTER TABLE playlists ADD COLUMN tracks_loaded INTEGER NOT NULL DEFAULT 0")
+            if "content_type" not in {row[1] for row in conn.execute("PRAGMA table_info(url_cache)")}:
+                conn.execute("ALTER TABLE url_cache ADD COLUMN content_type TEXT")
             conn.commit()
         except Exception:
             conn.close()

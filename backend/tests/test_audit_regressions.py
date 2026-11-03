@@ -57,8 +57,8 @@ class CatalogTests(unittest.TestCase):
 
     def test_resolve_cleans_expired_tokens_and_urls_only(self):
         self.refresh()
-        db().execute('INSERT INTO url_cache VALUES(?,?,?,?)',('expired','https://old.example/audio','proxy',now()-1))
-        db().execute('INSERT INTO url_cache VALUES(?,?,?,?)',('valid','https://valid.example/audio','proxy',now()+3600))
+        db().execute('INSERT INTO url_cache(key,stream_url,kind,expires_at) VALUES(?,?,?,?)',('expired','https://old.example/audio','proxy',now()-1))
+        db().execute('INSERT INTO url_cache(key,stream_url,kind,expires_at) VALUES(?,?,?,?)',('valid','https://valid.example/audio','proxy',now()+3600))
         db().execute('INSERT INTO issued_streams VALUES(?,?,?)',('old','https://old.example/audio',now()-86401))
         db().execute('INSERT INTO issued_streams VALUES(?,?,?)',('valid','https://valid.example/audio',now()))
         db().commit()

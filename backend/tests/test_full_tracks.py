@@ -37,7 +37,7 @@ class FullCacheTests(unittest.TestCase):
     tearDown = fixtures.ContractTests.tearDown
 
     def test_full_mode_does_not_reuse_preview_cache(self):
-        db().execute('INSERT INTO url_cache VALUES(?,?,?,?)', ('spotify|1','https://preview.example/30s.mp3','direct',9999999999))
+        db().execute('INSERT INTO url_cache(key,stream_url,kind,expires_at) VALUES(?,?,?,?)', ('spotify|1','https://preview.example/30s.mp3','direct',9999999999))
         db().commit()
         connector = fixtures.Connector('spotify')
         connector.resolve = AsyncMock(side_effect=SourceUnavailable('full track unavailable'))

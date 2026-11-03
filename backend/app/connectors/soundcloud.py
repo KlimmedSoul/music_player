@@ -132,4 +132,4 @@ class SoundCloudConnector:
             raise SourceUnavailable(f"SoundCloud: stream {response.status_code}")
         if not isinstance(stream_url,str) or not stream_url.startswith(("https://","http://")):
             raise SourceUnavailable("SoundCloud: ссылка потока отсутствует")
-        return Resolved(stream_url=stream_url,kind="proxy" if progressive else "direct",ttl_s=86400)
+        return Resolved(stream_url=stream_url,kind="proxy" if progressive else "direct",ttl_s=86400,content_type=((selected.get("format") or {}).get("mime_type") or "audio/mpeg") if progressive else "application/vnd.apple.mpegurl")

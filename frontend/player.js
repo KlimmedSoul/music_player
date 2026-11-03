@@ -179,7 +179,7 @@ class MusicPlayer extends EventTarget {
       const prefetched = !retry && warm && warm.token === this.api.token && Date.now() - warm.at < 5 * 60 * 1000
         ? (warm.data || await warm.promise) : null;
       if (version !== this.version) return;
-      const data = prefetched || await this.api.resolve(track, {signal:this.controller.signal});
+      const data = prefetched || await this.api.resolve(track, {signal:this.controller.signal,refresh:retry});
       this.prewarm.delete(warmKey);
       if (version !== this.version) return;
       const url = new URL(
@@ -189,7 +189,7 @@ class MusicPlayer extends EventTarget {
       if (!["https:", "http:"].includes(url.protocol))
         throw new Error("Сервер выдал неподдерживаемую аудиоссылку.");
       if (
-        /\.m3u8(?:$|\?)/i.test(url.href) &&
+        (/\.m3u8(?:$|\?)/i.test(url.href) || /mpegurl/i.test(data.content_type || "")) &&
         !this.audio.canPlayType("application/vnd.apple.mpegurl")
       )
         throw new Error(

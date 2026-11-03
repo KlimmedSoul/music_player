@@ -123,7 +123,7 @@ class ContractTests(unittest.TestCase):
         finally:
             self.client.portal.call(app.state.http.aclose)
             app.state.http = original
-        db().execute("INSERT INTO url_cache VALUES(?,?,?,?)", ("vk|direct", "https://media.example.test/live.m3u8", "direct", 9999999999))
+        db().execute("INSERT INTO url_cache(key,stream_url,kind,expires_at) VALUES(?,?,?,?)", ("vk|direct", "https://media.example.test/live.m3u8", "direct", 9999999999))
         db().commit()
         direct = self.client.post("/resolve", headers=self.headers, json={"source": "vk", "external_id": "direct"}).json()
         self.assertEqual(direct["kind"], "direct")

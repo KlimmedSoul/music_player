@@ -156,11 +156,12 @@ class MusicAPI extends EventTarget {
       { method: "POST", timeout: 180000 },
     );
   }
-  resolve(track, options) {
+  resolve(track, options = {}) {
+    const {refresh = false, ...requestOptions} = options;
     return this.request("/resolve", {
-      ...options,
+      ...requestOptions,
       method: "POST",
-      body: { source: track.source, external_id: String(track.external_id), full_only: true },
+      body: { source: track.source, external_id: String(track.external_id), full_only: true, refresh },
     });
   }
   artwork(track, options) {

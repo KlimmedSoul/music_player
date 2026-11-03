@@ -30,6 +30,7 @@ class Resolved:
     stream_url: str
     kind: str = "proxy"  # proxy = отдавать через /stream (CORS/IP-bound), direct = дать фронту URL как есть
     ttl_s: int = 1800
+    content_type: str | None = None
 
 
 def clean_title(title: str) -> str:
