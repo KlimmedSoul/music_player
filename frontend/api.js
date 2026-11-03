@@ -15,7 +15,7 @@ class MusicAPI extends EventTarget {
       (location.protocol.startsWith("http")
         ? location.port === "8081"
           ? `${location.protocol}//${location.hostname}:8080`
-          : location.origin
+          : "https://myplayer-after-dark-api.onrender.com"
         : "http://localhost:8080");
     this.token =
       this.read(sessionStorage, `myplayer-session:${this.base}`) || "";
