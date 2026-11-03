@@ -1,0 +1,31 @@
+# Деплой бэкенда на Render (бесплатный тариф)
+# render.com → New → Blueprint (указать репу, root = backend)
+# все *_TOKEN/PASSWORD/SECRET переменные задать в Dashboard → Environment
+services:
+  - type: web
+    name: myplayer-backend
+    runtime: docker
+    repo: https://github.com/KlimmedSoul/music_player
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    plan: free          # засыпает после 15 мин простоя — первый заход ~минута
+    healthCheckPath: /healthz
+    envVars:
+      - key: DB_PATH
+        value: /tmp/data.db
+      - key: AUTH_PASSWORD
+        sync: false     # заполнить в дашборде
+      - key: JWT_SECRET
+        generateValue: true
+      - key: VK_TOKEN
+        sync: false
+      - key: SOUNDCLOUD_OAUTH_TOKEN
+        sync: false
+      - key: SOUNDCLOUD_CLIENT_ID
+        sync: false
+      - key: SPOTIFY_CLIENT_ID
+        sync: false
+      - key: SPOTIFY_CLIENT_SECRET
+        sync: false
+      - key: SPOTIFY_REFRESH_TOKEN
+        sync: false
