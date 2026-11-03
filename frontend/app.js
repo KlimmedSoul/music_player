@@ -323,6 +323,10 @@ async function more(button) {
     button.textContent = "Показать ещё";
   }
 }
+function scrollPageToTop() {
+  $(".app-shell").scrollTo({ top: 0, behavior: "instant" });
+  window.scrollTo({ top: 0, behavior: "instant" });
+}
 function navigate(page, playlist = null) {
   if (!api.token) return;
   if (playlist) state.playlist = playlist;
@@ -338,7 +342,7 @@ function navigate(page, playlist = null) {
   history.pushState(null, "", `#${hash}`);
   renderShell();
   loadView();
-  window.scrollTo({ top: 0, behavior: "instant" });
+  scrollPageToTop();
   $("#main").focus({ preventScroll: true });
 }
 async function checkStatus() {
@@ -730,6 +734,7 @@ window.addEventListener("popstate", () => {
   }
   renderShell();
   loadView();
+  scrollPageToTop();
 });
 document.addEventListener("keydown", (event) => {
   if (
