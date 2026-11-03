@@ -5,7 +5,7 @@ import httpx
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .auth import auth_required, create_token
 from .artwork import find_cover
@@ -76,14 +76,18 @@ class TrackBody(BaseModel):
     external_id: str
 
 
+class FavoriteBody(TrackBody):
+    favorite: bool | None = None
+
+
 class PlayBody(TrackBody):
-    position_s: float = 0
-    duration_s: float = 0
+    position_s: float = Field(0, ge=0, le=86400, allow_inf_nan=False)
+    duration_s: float = Field(0, ge=0, le=86400, allow_inf_nan=False)
     completed: bool = False
 
 
 class PositionBody(TrackBody):
-    position_s: float
+    position_s: float = Field(ge=0, le=86400, allow_inf_nan=False)
 
 
 def _known_track(body: TrackBody):
@@ -96,9 +100,9 @@ def _known_track(body: TrackBody):
 
 
 @app.post("/favorites/toggle", dependencies=[auth_required])
-def favorite_toggle(body: TrackBody):
+def favorite_toggle(body: FavoriteBody):
     _known_track(body)
-    return {"favorite": activity.toggle_favorite(body.source, body.external_id)}
+    return {"favorite": activity.toggle_favorite(body.source, body.external_id, body.favorite)}
 
 
 @app.get("/favorites", dependencies=[auth_required])
@@ -140,7 +144,7 @@ async def lyrics(
 ):
     try:
         return await find_lyrics(client(request), title, artist, duration_s)
-    except httpx.HTTPError:
+    except (httpx.HTTPError, ValueError, TypeError):
         raise HTTPException(502, "Сервер текстов не отвечает. Попробуй позже.")
 
 

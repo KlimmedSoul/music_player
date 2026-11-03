@@ -49,7 +49,8 @@ let viewVersion = 0,
   sessionVersion = 0,
   lastPlayed = null,
   lastPosSent = 0,
-  lyricsActive = -2;
+  lyricsActive = -2,
+  favoriteSaving = false;
 const queues = new Map();
 const trackKey = (track) =>
   track.dedup_key || JSON.stringify([track.source, String(track.external_id)]);
@@ -78,31 +79,35 @@ function isFavorite(track) {
 const positionKey = (track) =>
   `${track.source}|${String(track.external_id)}`;
 async function syncFavorites(options) {
-  state.favorites = (await api.favorites(options)).items || [];
+  const session = sessionVersion, token = api.token, base = api.base;
+  const data = await api.favorites(options);
+  if (session === sessionVersion && token === api.token && base === api.base)
+    state.favorites = data.items || [];
 }
 async function syncPositions(options) {
+  const session = sessionVersion, token = api.token, base = api.base;
   const data = await api.positions(options);
-  state.positions = new Map(
-    (data.items || []).map((p) => [
-      `${p.track_source}|${p.track_ext}`,
-      Number(p.position_s) || 0,
-    ]),
-  );
+  if (session !== sessionVersion || token !== api.token || base !== api.base) return;
+  state.positions = new Map((data.items || []).map(p => [`${p.track_source}|${p.track_ext}`, Number(p.position_s) || 0]));
 }
 async function migrateLegacyFavorites() {
   const legacy = read("myplayer-favorites", []);
   if (!Array.isArray(legacy) || !legacy.length) return;
-  try {
-    for (const track of legacy.slice(0, 200))
-      if (!isFavorite(track)) await api.toggleFavorite(track);
-    state.favorites = (await api.favorites()).items || [];
-    localStorage.removeItem(`myplayer-favorites:${api.base}`);
-    toast("Любимые треки теперь хранятся на сервере");
-  } catch {}
-  if (api.token) {
-    renderSidebar();
-    if (state.page === "favorites") renderContent();
+  const session = sessionVersion, base = api.base, remaining = [];
+  for (const track of legacy) {
+    if (session !== sessionVersion || base !== api.base || !api.token) return;
+    try { await api.setFavorite(track, true); }
+    catch { remaining.push(track); }
   }
+  if (session !== sessionVersion || base !== api.base || !api.token) return;
+  try {
+    if (remaining.length) write("myplayer-favorites", remaining);
+    else localStorage.removeItem(`myplayer-favorites:${base}`);
+    await syncFavorites();
+    if (session !== sessionVersion) return;
+    updatePlayer(); renderSidebar();
+    if (["home", "favorites", "recommendations"].includes(state.page)) renderContent();
+  } catch { /* Keep the original local list if synchronization is interrupted. */ }
 }
 function time(seconds) {
   if (!Number.isFinite(seconds)) return "0:00";
@@ -361,6 +366,10 @@ async function more(button) {
     button.textContent = "Показать ещё";
   }
 }
+function scrollPageToTop() {
+  $(".app-shell").scrollTo({ top: 0, behavior: "instant" });
+  window.scrollTo({ top: 0, behavior: "instant" });
+}
 function navigate(page, playlist = null) {
   if (!api.token) return;
   if (playlist) state.playlist = playlist;
@@ -376,7 +385,7 @@ function navigate(page, playlist = null) {
   history.pushState(null, "", `#${hash}`);
   renderShell();
   loadView();
-  window.scrollTo({ top: 0, behavior: "instant" });
+  scrollPageToTop();
   $("#main").focus({ preventScroll: true });
 }
 async function checkStatus() {
@@ -396,8 +405,10 @@ function resetSession() {
   ++viewVersion;
   controller?.abort();
   clearTimeout(searchTimer);
-  player.reset();
   lastPlayed = null;
+  favoriteSaving = false;
+  player.reset();
+  lastPosSent = 0;
   state.tracks = [];
   state.recommendationTracks = [];
   state.playlists = [];
@@ -427,7 +438,8 @@ async function enter() {
   ]);
   if (!api.token) return;
   renderSidebar();
-  if (state.page === "favorites") renderContent();
+  if (["home", "favorites", "recommendations"].includes(state.page)) renderContent();
+  updatePlayer();
   migrateLegacyFavorites();
 }
 async function sync() {
@@ -485,7 +497,7 @@ function settings() {
     `<span class="eyebrow">ТВОИ ИСТОЧНИКИ</span><h2>Вместе звучит лучше.</h2><p>Подключение, синхронизация и здоровье музыкальных сервисов.</p><div class="source-list">${["vk", "soundcloud", "spotify", "ytmusic"].map((key) => {
       const value = health(key);
       const ready = configured(key) && !String(value).startsWith("error");
-      return `<div class="source-item"><strong>${names[key]}</strong><span class="status-dot ${ready ? "ready" : ""} ${String(value).startsWith("error") ? "error" : ""}"></span><small>${configured(key) ? (key === "spotify" && !state.spotifyLoggedIn ? "Настроен — нужен вход" : String(value).startsWith("error") ? "Не отвечает" : "Работает") : "Не настроен"}</small></div>${value ? `<p class="sync-result ${healthClass(value)}">${escapeHtml(String(value))}</p>` : ""}`;
+      return `<div class="source-item"><strong>${names[key]}</strong><span class="status-dot ${ready ? "ready" : ""} ${String(value).startsWith("error") ? "error" : ""}"></span><small>${configured(key) ? (key === "spotify" && !state.spotifyLoggedIn ? "Настроен — нужен вход" : String(value).startsWith("error") ? "Не отвечает" : String(value).startsWith("ok") ? "Работает" : "Настроен") : "Не настроен"}</small></div>${value ? `<p class="sync-result ${healthClass(value)}">${escapeHtml(String(value))}</p>` : ""}`;
     }).join("")}</div><p class="settings-note">${checkedAt ? `Последняя синхронизация: ${checkedAt}` : "Библиотека ещё не синхронизировалась."}</p><button class="load-more" data-action="check-status">Проверить источники</button>${configured("spotify") ? '<button class="primary-button" data-action="spotify">Подключить Spotify</button><p id="spotify-result" role="status"></p>' : ""}<button class="load-more" data-action="refresh">Обновить библиотеку</button><p class="settings-note">VK, YouTube Music и SoundCloud подключаются токенами в настройках сервера. Для Spotify нужен настроенный Redirect URI.</p><p class="server-address">${escapeHtml(api.base)}</p><button class="text-button" data-action="logout">Выйти / сменить сервер ${icon("arrow")}</button>`,
   );
 }
@@ -551,7 +563,7 @@ function updatePlayer() {
   );
   $("#play-toggle").setAttribute("aria-pressed", String(player.playing));
   document.body.classList.toggle("is-playing", player.playing);
-  $("#like-track").disabled = !track;
+  $("#like-track").disabled = !track || favoriteSaving;
   $("#like-track").innerHTML = icon(isFavorite(track) ? "check" : "plus");
   $("#like-track").setAttribute("aria-pressed", String(!!isFavorite(track)));
   $("#like-track").setAttribute(
@@ -586,14 +598,20 @@ function updatePlayer() {
 }
 async function toggleFavorite() {
   const track = player.current;
-  if (!track) return;
+  if (!track || favoriteSaving) return;
+  const session = sessionVersion;
+  favoriteSaving = true;
+  $("#like-track").disabled = true;
   let result;
   try {
-    result = await api.toggleFavorite(track);
+    result = await api.setFavorite(track, !isFavorite(track));
     await syncFavorites();
   } catch (error) {
-    return toast(error.message);
+    if (session === sessionVersion) { favoriteSaving = false; updatePlayer(); toast(error.message); }
+    return;
   }
+  if (session !== sessionVersion) return;
+  favoriteSaving = false;
   toast(
     result.favorite
       ? "Добавлено в любимые треки — на всех устройствах"
@@ -615,9 +633,9 @@ function currentTrackModal() {
 /* ---------- История прослушиваний и «продолжить с места остановки» ---------- */
 function flushPlayed(completed = false) {
   if (!lastPlayed) return;
-  const { track, position } = lastPlayed;
+  const { track, position, duration = (lastPlayed.track.duration_ms || 0) / 1000 } = lastPlayed;
   lastPlayed = null;
-  const duration = player.duration || (track.duration_ms || 0) / 1000;
+  if (!api.token || position <= 0) return;
   api.scrobble(track, { position, duration, completed });
   if (completed) state.positions.delete(positionKey(track));
   else if (position > 10) {
@@ -631,8 +649,9 @@ player.audio.addEventListener("timeupdate", () => {
   const key = positionKey(track);
   if (lastPlayed && lastPlayed.key !== key) flushPlayed(false);
   if (!lastPlayed || lastPlayed.key !== key)
-    lastPlayed = { key, track, position: 0 };
+    lastPlayed = { key, track, position: 0, duration: player.duration };
   lastPlayed.position = player.audio.currentTime || 0;
+  lastPlayed.duration = player.duration;
   const now = Date.now();
   if (player.playing && lastPlayed.position > 10 && now - lastPosSent > 15000) {
     lastPosSent = now;
@@ -641,8 +660,12 @@ player.audio.addEventListener("timeupdate", () => {
   }
 });
 player.addEventListener("trackend", ({ detail }) => {
-  lastPlayed = { key: positionKey(detail.track), track: detail.track, position: detail.position };
+  lastPlayed = { key: positionKey(detail.track), track: detail.track, position: detail.position, duration: detail.duration };
   flushPlayed(true);
+});
+player.addEventListener("trackchange", () => flushPlayed(false));
+player.audio.addEventListener("pause", () => {
+  if (!player.audio.ended && api.token && lastPlayed) flushPlayed(false);
 });
 document.addEventListener("visibilitychange", () => {
   if (document.hidden && lastPlayed) flushPlayed(false);
@@ -668,13 +691,15 @@ async function lyricsModal() {
   const track = player.current;
   if (!track) return toast("Сначала выбери трек в библиотеке");
   lyricsActive = -2;
+  const lyricsKey = JSON.stringify([api.base, trackKey(track)]);
   showModal(
     `<span class="eyebrow">ТЕКСТ · ${escapeHtml(names[track.source] || track.source)}</span><h2>${escapeHtml(track.title)}</h2><p>${escapeHtml(track.artist)}</p><div class="lyrics" id="lyrics-body">${busy("Ищем текст…")}</div>`,
   );
+  $("#lyrics-body").dataset.track = lyricsKey;
   try {
     const data = await api.lyrics(track);
     const box = $("#lyrics-body");
-    if (!box) return;
+    if (!box || box.dataset.track !== lyricsKey || !$("#modal").open) return;
     if (!data.synced && !data.plain) {
       box.innerHTML = "<p>Текста для этого трека не нашлось.</p>";
       return;
@@ -704,12 +729,12 @@ async function lyricsModal() {
     highlightLyrics(true);
   } catch (error) {
     const box = $("#lyrics-body");
-    if (box) box.innerHTML = `<p>${escapeHtml(error.message)}</p>`;
+    if (box && box.dataset.track === lyricsKey) box.innerHTML = `<p>${escapeHtml(error.message)}</p>`;
   }
 }
 function highlightLyrics(force = false) {
   const box = $("#lyrics-body");
-  if (!box || !$("#modal").open) return;
+  if (!box || !$("#modal").open || !player.current || box.dataset.track !== JSON.stringify([api.base, trackKey(player.current)])) return;
   const lines = $$("p[data-t]", box);
   if (!lines.length) return;
   const at = (player.audio.currentTime || 0) + 0.5;
@@ -721,17 +746,21 @@ function highlightLyrics(force = false) {
   lyricsActive = active;
   lines.forEach((line, i) => line.classList.toggle("active", i === active));
   if (active >= 0)
-    lines[active].scrollIntoView({ block: "center", behavior: "smooth" });
+    box.scrollTo({top:Math.max(0, lines[active].offsetTop - box.offsetTop - box.clientHeight / 2), behavior:"smooth"});
 }
 async function historyModal() {
-  showModal(`<h2>Недавно прослушано</h2>${busy()}`);
+  const session = sessionVersion;
+  showModal(`<h2>Недавно прослушано</h2><div id="history-loading">${busy()}</div>`);
+  const marker = $("#history-loading");
   try {
     const data = await api.history();
     const items = data.items || [];
+    if (session !== sessionVersion || !marker.isConnected || !$("#modal").open) return;
     showModal(
       `<h2>Недавно прослушано</h2><p class="settings-note">Общая история со всех устройств.</p>${items.length ? trackList(items, "history") : "<p>Пока пусто. Здесь появятся треки, которые ты слушал.</p>"}`,
     );
   } catch (error) {
+    if (session !== sessionVersion || !marker.isConnected || !$("#modal").open) return;
     showModal(
       `<h2>Недавно в плеере</h2>${state.history.length ? trackList(state.history, "history") : `<p>${escapeHtml(error.message)}</p>`}`,
     );
@@ -930,6 +959,7 @@ window.addEventListener("popstate", () => {
   }
   renderShell();
   loadView();
+  scrollPageToTop();
 });
 document.addEventListener("keydown", (event) => {
   if (

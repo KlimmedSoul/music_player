@@ -184,6 +184,12 @@ class MusicAPI extends EventTarget {
       body: { source: track.source, external_id: String(track.external_id) },
     });
   }
+  setFavorite(track, favorite = true, options) {
+    return this.request("/favorites/toggle", {
+      ...options, method: "POST",
+      body: {source:track.source, external_id:String(track.external_id), favorite},
+    });
+  }
   history(options) {
     return this.request(`/history?${new URLSearchParams({ limit: 30 })}`, options);
   }

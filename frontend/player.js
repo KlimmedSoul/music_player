@@ -16,6 +16,8 @@ class MusicPlayer extends EventTarget {
     this.controller = null;
     this.prewarm = new Map(); // source|ext -> {data, at}: уже разрешённый следующий трек
     this.mediaPositionAt = 0;
+    this.sessionEpoch = 0;
+    this.prewarmControllers = new Set();
     for (const event of [
       "play",
       "pause",
@@ -38,7 +40,7 @@ class MusicPlayer extends EventTarget {
       if (finished)
         this.dispatchEvent(
           new CustomEvent("trackend", {
-            detail: { track: finished, position: this.duration || 0 },
+            detail: { track: finished, position: this.duration || 0, duration: this.duration || 0 },
           }),
         );
       if (this.repeat) {
@@ -131,20 +133,21 @@ class MusicPlayer extends EventTarget {
     } catch {}
   }
   prewarmNext() {
-    const next =
-      this.shuffle || !this.queue.length || this.index + 1 >= this.queue.length
-        ? null
-        : this.queue[this.index + 1];
+    const next = !this.shuffle && this.queue[this.index + 1];
     if (!next) return;
-    const key = `${next.source}|${next.external_id}`;
+    const key = `${this.api.base}|${next.source}|${next.external_id}`;
     if (this.prewarm.has(key)) return;
-    this.prewarm.set(key, { at: Date.now(), data: null });
-    this.api
-      .resolve(next)
-      .then((data) => this.prewarm.set(key, { at: Date.now(), data }))
-      .catch(() => this.prewarm.delete(key));
-    while (this.prewarm.size > 6)
-      this.prewarm.delete(this.prewarm.keys().next().value);
+    const epoch = this.sessionEpoch, token = this.api.token;
+    const controller = new AbortController();
+    this.prewarmControllers.add(controller);
+    const warm = {at:Date.now(),data:null,token};
+    warm.promise = this.api.resolve(next, {signal:controller.signal}).then(data => {
+      if (epoch === this.sessionEpoch && token === this.api.token) { warm.data = data; warm.at = Date.now(); }
+      return warm.data;
+    }).catch(() => { if (this.prewarm.get(key) === warm) this.prewarm.delete(key); return null; })
+      .finally(() => this.prewarmControllers.delete(controller));
+    this.prewarm.set(key, warm);
+    while (this.prewarm.size > 6) this.prewarm.delete(this.prewarm.keys().next().value);
   }
   fail(message) {
     this.loading = false;
@@ -153,6 +156,7 @@ class MusicPlayer extends EventTarget {
     this.dispatchEvent(new CustomEvent("error", { detail: message }));
   }
   select(queue, index, position = 0) {
+    this.dispatchEvent(new Event("trackchange"));
     this.queue = queue.slice();
     this.index = index;
     this.retried = false;
@@ -170,14 +174,12 @@ class MusicPlayer extends EventTarget {
     this.loading = true;
     this.emit();
     try {
-      const warmKey = `${track.source}|${track.external_id}`;
+      const warmKey = `${this.api.base}|${track.source}|${track.external_id}`;
       const warm = this.prewarm.get(warmKey);
-      const data =
-        warm?.data && Date.now() - warm.at < 30 * 60 * 1000
-          ? warm.data
-          : await this.api.resolve(track, {
-              signal: this.controller.signal,
-            });
+      const prefetched = !retry && warm && warm.token === this.api.token && Date.now() - warm.at < 5 * 60 * 1000
+        ? (warm.data || await warm.promise) : null;
+      if (version !== this.version) return;
+      const data = prefetched || await this.api.resolve(track, {signal:this.controller.signal});
       this.prewarm.delete(warmKey);
       if (version !== this.version) return;
       const url = new URL(
@@ -283,6 +285,9 @@ class MusicPlayer extends EventTarget {
     this.queue = [];
     this.index = -1;
     this.loading = false;
+    this.sessionEpoch++;
+    for (const controller of this.prewarmControllers) controller.abort();
+    this.prewarmControllers.clear();
     this.prewarm.clear();
     if ("mediaSession" in navigator) {
       navigator.mediaSession.metadata = null;

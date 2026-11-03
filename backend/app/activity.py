@@ -3,7 +3,7 @@ from .db import db, now
 from .library import _row_to_dict
 
 
-def toggle_favorite(source: str, ext: str) -> bool:
+def toggle_favorite(source: str, ext: str, desired: bool | None = None) -> bool:
     """Лайк привязан к дедуп-ключу: один трек из разных сервисов — одно избранное."""
     conn = db()
     trow = conn.execute(
@@ -15,6 +15,8 @@ def toggle_favorite(source: str, ext: str) -> bool:
     existing = conn.execute(
         f"SELECT 1 FROM favorites WHERE {match}", (source, ext, dedup)
     ).fetchone()
+    if desired is not None and bool(existing) == desired:
+        return desired
     if existing:
         conn.execute(f"DELETE FROM favorites WHERE {match}", (source, ext, dedup))
         favorite = False
