@@ -105,6 +105,8 @@ def list_tracks(q: str = "", source: str = "all", cursor: int = 0, limit: int = 
         ).fetchall()
         primary = next((r for r in rows if r["source"] == source), rows[0])
         d = _row_to_dict(primary)
+        # Prefer the selected source, but use another copy's cover if it is absent.
+        d["cover"] = d.get("cover") or next((r["cover"] for r in rows if r["cover"]), None)
         d["sources"] = [r["source"] for r in rows]
         items.append(d)
     return {"items": items, "next_cursor": cursor + limit}

@@ -52,6 +52,7 @@ Spotify отдаёт лайки/плейлисты полностью, но зв
 | GET | `/status` | конфиг/статус источников, `spotify_logged_in` |
 | POST | `/library/refresh?source=vk\|soundcloud\|spotify\|(пусто=all)` | pull лайков+плейлистов, ответ: статус по каждому источнику |
 | GET | `/library/tracks?source=all&q=&cursor=0&limit=50` | дедуп-объединённые треки; `items[].sources` — где ещё есть; `next_cursor` |
+| GET | `/artwork?title=…&artist=…` | → `{cover: URL или null}`; резервный поиск обложки в iTunes, за JWT |
 | GET | `/library/playlists` | плейлисты всех источников (`source`,`external_id`,`title`,`cover`) |
 | GET | `/library/playlists/{source}/{ext}/tracks` | состав плейлиста (ленивый добор с источника) |
 | POST | `/resolve` `{source, external_id}` | → `{kind:"proxy", stream_path:"/stream/<token>"}` или `{kind:"direct", stream_url}` |

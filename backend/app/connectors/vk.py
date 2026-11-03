@@ -35,6 +35,10 @@ class VKConnector:
 
     @staticmethod
     def _cover(item: dict) -> str | None:
+        thumb = (item.get("album") or {}).get("thumb") or {}
+        for size in ("photo_1200", "photo_600", "photo_300", "photo_135", "photo_68"):
+            if thumb.get(size):
+                return thumb[size]
         # обложки лежат в album.images (новый формат) или в cover_* (старый)
         album = item.get("album") or {}
         imgs = album.get("images") or []

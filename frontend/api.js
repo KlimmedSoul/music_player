@@ -161,6 +161,12 @@ class MusicAPI extends EventTarget {
       body: { source: track.source, external_id: String(track.external_id) },
     });
   }
+  artwork(track, options) {
+    return this.request(`/artwork?${new URLSearchParams({
+      title: String(track.title || "").slice(0, 200),
+      artist: String(track.artist || "").slice(0, 200),
+    })}`, { timeout: 12000, ...options });
+  }
   spotify() {
     return this.request("/auth/spotify/start");
   }

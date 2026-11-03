@@ -124,6 +124,7 @@ class MusicPlayer extends EventTarget {
           title: track.title,
           artist: track.artist,
           album: track.album || "",
+          artwork: [{ src: document.querySelector("#player-cover").src }],
         });
       }
       await this.audio.play();

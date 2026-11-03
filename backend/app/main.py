@@ -8,6 +8,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 
 from .auth import auth_required, create_token
+from .artwork import find_cover
 from .config import settings
 from .connectors.base import SourceUnavailable
 from .db import db
@@ -79,6 +80,15 @@ def tracks(q: str = "", source: str = "all", cursor: int = 0, limit: int = 50):
 @app.get("/library/playlists", dependencies=[auth_required])
 def playlists():
     return library.list_playlists()
+
+
+@app.get("/artwork", dependencies=[auth_required])
+async def artwork(
+    request: Request,
+    title: str = Query(min_length=1, max_length=200),
+    artist: str = Query(min_length=1, max_length=200),
+):
+    return {"cover": await find_cover(client(request), title, artist)}
 
 
 @app.get("/library/playlists/{source}/{ext}/tracks", dependencies=[auth_required])

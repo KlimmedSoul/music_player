@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="600" viewBox="0 0 900 600">
+<defs>
+ <pattern id="hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(35)"><path d="M0 0v7" stroke="#111" stroke-width="2"/></pattern>
+ <pattern id="dots" width="5" height="5" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r=".8" fill="#111"/></pattern>
+ <pattern id="windows" width="25" height="27" patternUnits="userSpaceOnUse"><path d="M5 5h9v16H5z" fill="#ddd"/><path d="M9 5v16" stroke="#111"/></pattern>
+ <pattern id="dark-windows" width="25" height="30" patternUnits="userSpaceOnUse"><path d="M4 4h12v17H4z" fill="#111"/><path d="M4 14h12" stroke="#eee"/></pattern>
+</defs>
+<path fill="#e5e5e5" d="M0 0h900v600H0z"/>
+<path fill="url(#dots)" d="M0 0h900v600H0z"/>
+<circle cx="615" cy="154" r="115" fill="#fafafa" stroke="#111" stroke-width="3"/>
+<path d="m648 44-18 38 22 18-34 41 20 19-29 48 8 59" fill="none" stroke="#111" stroke-width="2"/>
+<path d="m629 82-42-8m31 67-51 8m71 11 42-11" fill="none" stroke="#111"/>
+<!-- Hand-inked clouds and speed lines. No figures or franchise artwork. -->
+<g fill="none" stroke="#111" stroke-width="2">
+<path d="M20 54 470 83M86 21l350 49M0 118l388 5M40 142l292 3M760 21l-52 67M890 66l-139 62M900 154l-130 12M896 210l-141-9"/>
+<path d="m0 240 207-10 52 13 74-6 51 9 126-4m186-21 94-12 66 8 44-8M36 269l152-8 87 13 97-9M713 262l73-7 114 14"/>
+</g>
+<!-- Distant skyline -->
+<g fill="#bbb" stroke="#222" stroke-width="2">
+<path d="M100 420V275h48v-26h65v171M240 420V318h43v-63h55v165M364 420V293h39v-40h41v167M692 420V289h40v-54h48v185M801 430V311h26v-34h58v153"/>
+</g>
+<path d="M70 425h830v90H70z" fill="url(#hatch)"/>
+<!-- A slanting utility pole and tangled wires. -->
+<g fill="none" stroke="#111">
+<path d="m730 600-40-440" stroke-width="9"/><path d="m649 188 105-12m-117 40 130-14" stroke-width="6"/>
+<path d="M0 126Q328 325 647 188t253-42M0 160q326 190 646 54 194-93 254-21M0 190q319 177 648 29M744 179q75 57 156 37" stroke-width="2"/>
+<path d="m662 172 1 22m25-25 2 22m33-28 2 21m20-23 2 20" stroke-width="5"/>
+</g>
+<!-- Foreground buildings: solid ink, scratched edges, ruled windows. -->
+<path d="M0 600V281l150-41v360z" fill="#111" stroke="#111" stroke-width="5"/>
+<path d="m10 294 127-32v338H10z" fill="url(#windows)"/>
+<path d="M145 600V346l125-40 64 29v265z" fill="#eee" stroke="#111" stroke-width="4"/>
+<path d="m160 357 100-33v276H160z" fill="url(#dark-windows)"/>
+<path d="m273 327 47 20v253h-47z" fill="url(#hatch)"/>
+<path d="M329 600V400l79-12v-31l85 1v242z" fill="#111" stroke="#111" stroke-width="5"/>
+<path d="M348 421h122v179H348z" fill="url(#windows)"/>
+<path d="M496 600V329l100-31 55 35v267z" fill="#eee" stroke="#111" stroke-width="5"/>
+<path d="m506 340 78-25v285h-78z" fill="url(#dark-windows)"/>
+<path d="m598 314 42 26v260h-42z" fill="url(#hatch)"/>
+<path d="M769 600V353l131-53v300z" fill="#111" stroke="#111" stroke-width="5"/>
+<path d="m787 369 101-38v269H787z" fill="url(#windows)"/>
+<g fill="none" stroke="#111" stroke-width="3">
+<path d="m164 345-3-34 104-34 1 31m274-3v-53l36-10 34 14v47M180 277l-2-51m-26 11 51-15m356 20-1-56m-24 20 48-14"/>
+</g>
+<g stroke="#eee" stroke-width="1" opacity=".7"><path d="m23 341 24-6m-15 10 8-2M350 443l35 3m-33 4 12 2M799 425l29-10m-24 16 8-2"/></g>
+<!-- Original inked spider-lily silhouette, an abstract botanical accent. -->
+<g fill="none" stroke="#111" stroke-width="3">
+<path d="M674 600q-41-65-18-137m-6 62q-40-32-51-9m56 29q37-45 56-29m-60-49q-38-13-53-48m54 48q-9-53 10-74m-7 72q35-39 61-34m-59 35q31 7 44 30m-49-28q-38 8-55-7"/>
+<path d="M650 464q-70-29-48-61m51 59q-26-71 0-80m1 81q10-71 38-66m-35 67q61-35 72-12m-74 16q51 23 43 48m-45-49q-47 35-61 12" stroke-width="5"/>
+</g>
+<path d="M0 582q165-35 317 4t314-2 269-7v23H0z" fill="#111"/>
+</svg>

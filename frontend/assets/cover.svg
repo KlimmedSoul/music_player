@@ -1,16 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600">
-  <defs>
-    <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#282033"/><stop offset="1" stop-color="#795b9c"/></linearGradient>
-    <linearGradient id="ring" x2="1" y2="1"><stop stop-color="#ddc9ff"/><stop offset="1" stop-color="#9974ce"/></linearGradient>
-    <radialGradient id="disc"><stop stop-color="#24192f"/><stop offset="1" stop-color="#31233f"/></radialGradient>
-  </defs>
-  <rect width="600" height="600" fill="url(#bg)"/>
-  <circle cx="300" cy="300" r="225" fill="url(#disc)"/>
-  <g fill="none" stroke="#b49aff" opacity=".13" stroke-width="2">
-    <circle cx="300" cy="300" r="210"/><circle cx="300" cy="300" r="195"/><circle cx="300" cy="300" r="180"/><circle cx="300" cy="300" r="165"/><circle cx="300" cy="300" r="150"/><circle cx="300" cy="300" r="135"/>
-  </g>
-  <circle cx="300" cy="300" r="95" fill="url(#ring)"/>
-  <circle cx="300" cy="300" r="12" fill="#352341"/>
-  <path d="M250 267q50-24 100 6m-90-25q40-16 80 5" fill="none" stroke="#4a335d" stroke-width="7" stroke-linecap="round"/>
-  <text x="300" y="553" text-anchor="middle" font-family="Arial,sans-serif" font-size="14" letter-spacing="6" fill="#dcc8f5" opacity=".6">MYPLAYER</text>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300"><defs><pattern id="h" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(35)"><path d="M0 0v6" stroke="#111" stroke-width="1"/></pattern></defs><path fill="#eee" d="M0 0h300v300H0z"/><path fill="url(#h)" d="M0 0h300v300H0z"/><path d="m20 23 260-3-3 260-257-3z" fill="#111" stroke="#eee" stroke-width="2"/><circle cx="150" cy="150" r="94" fill="#222" stroke="#eee" stroke-width="2"/><g fill="none" stroke="#777"><circle cx="150" cy="150" r="84"/><circle cx="150" cy="150" r="76"/><circle cx="150" cy="150" r="68"/></g><circle cx="150" cy="150" r="34" fill="#eee"/><circle cx="150" cy="150" r="5" fill="#111"/><path d="m60 82 12-9m-10 17 23-17m128 150 21-15m-13 2 17-13" stroke="#eee"/><text x="150" y="271" text-anchor="middle" font-family="monospace" font-size="9" letter-spacing="3" fill="#eee">MYPLAYER / NO COVER</text></svg>

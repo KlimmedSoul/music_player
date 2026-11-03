@@ -19,6 +19,7 @@ const names = {
 };
 const api = new MusicAPI();
 const player = new MusicPlayer(api);
+const artwork = new MusicArtwork(api);
 const state = {
   page: "home",
   source: "all",
@@ -42,7 +43,6 @@ let viewVersion = 0,
   toastTimer,
   sessionVersion = 0;
 const queues = new Map();
-const failedImages = new Set();
 const trackKey = (track) =>
   track.dedup_key || JSON.stringify([track.source, String(track.external_id)]);
 const playlistKey = (playlist) =>
@@ -75,30 +75,16 @@ function time(seconds) {
 function imageURL(value) {
   try {
     const url = new URL(value);
-    if (["http:", "https:"].includes(url.protocol))
-      return failedImages.has(url.href)
-        ? "assets/cover.svg"
-        : escapeHtml(url.href);
+    if (["http:", "https:"].includes(url.protocol)) return url.href;
   } catch {}
   return "assets/cover.svg";
 }
 function image(value, alt = "", className = "") {
-  return `<img src="${imageURL(value)}" alt="${escapeHtml(alt)}" class="${className}" loading="lazy" referrerpolicy="no-referrer">`;
+  return `<img src="${escapeHtml(imageURL(value))}" alt="${escapeHtml(alt)}" class="${className}" loading="lazy" decoding="async" referrerpolicy="no-referrer">`;
 }
-document.addEventListener(
-  "error",
-  (event) => {
-    const img = event.target;
-    if (
-      img instanceof HTMLImageElement &&
-      !img.src.endsWith("/assets/cover.svg")
-    ) {
-      failedImages.add(img.src);
-      img.src = "assets/cover.svg";
-    }
-  },
-  true,
-);
+function trackImage(track) {
+  return `<img src="${escapeHtml(imageURL(track.cover))}" alt="${escapeHtml(`Обложка: ${track.title || "трек"}`)}" data-artwork-title="${escapeHtml(track.title)}" data-artwork-artist="${escapeHtml(track.artist)}" loading="lazy" decoding="async" referrerpolicy="no-referrer">`;
+}
 function toast(message) {
   $("#toast").textContent = message;
   $("#toast").classList.add("show");
@@ -139,7 +125,7 @@ function errorBanner(message) {
 }
 function trackList(items, queue = "main") {
   queues.set(queue, items.slice());
-  return `<div class="track-list">${items.map((track, i) => `<button class="track ${trackKey(track) === (player.current && trackKey(player.current)) ? "current-track" : ""}" data-queue="${queue}" data-index="${i}" aria-label="Включить ${escapeHtml(track.title)}"><span class="track-number">${i + 1}</span>${image(track.cover)}<span class="track-info"><strong>${escapeHtml(track.title || "Без названия")}</strong><small>${escapeHtml(track.artist || "Неизвестный исполнитель")} <span class="source-tag">${escapeHtml((track.sources || [track.source]).map((source) => names[source] || source).join(" · "))}</span></small></span><span class="track-duration">${time((track.duration_ms || 0) / 1000)}</span>${icon("play")}</button>`).join("")}</div>`;
+  return `<div class="track-list">${items.map((track, i) => `<button class="track ${trackKey(track) === (player.current && trackKey(player.current)) ? "current-track" : ""}" data-queue="${queue}" data-index="${i}" aria-label="Включить ${escapeHtml(track.title)}"><span class="track-number">${i + 1}</span>${trackImage(track)}<span class="track-info"><strong>${escapeHtml(track.title || "Без названия")}</strong><small>${escapeHtml(track.artist || "Неизвестный исполнитель")} <span class="source-tag">${escapeHtml((track.sources || [track.source]).map((source) => names[source] || source).join(" · "))}</span></small></span><span class="track-duration">${time((track.duration_ms || 0) / 1000)}</span>${icon("play")}</button>`).join("")}</div>`;
 }
 function card(playlist) {
   return `<button class="music-card" data-playlist="${escapeHtml(playlistKey(playlist))}"><div class="cover-wrap">${image(playlist.cover)}<span class="source-badge">${escapeHtml(names[playlist.source] || playlist.source)}</span><span class="card-play">${icon("play")}</span></div><strong>${escapeHtml(playlist.title)}</strong><p>${Number(playlist.total) || 0} треков · ${escapeHtml(names[playlist.source] || playlist.source)}</p></button>`;
@@ -170,7 +156,7 @@ function homeContent() {
         `<button class="quick-card" data-playlist="${escapeHtml(playlistKey(p))}">${image(p.cover)}<strong>${escapeHtml(p.title)}</strong></button>`,
     )
     .join("")}</div>
-  <section class="hero"><div class="hero-content"><span class="eyebrow">${icon("logo")}ВСЯ ТВОЯ МУЗЫКА ВМЕСТЕ</span><h2>Твой ритм.<br><span>Твои правила.</span></h2><p>VK, SoundCloud и Spotify.<br>Одна библиотека. Твой любимый звук.</p>${state.tracks.length ? `<button class="primary-button" data-queue="main" data-index="0">${icon("play")}Слушать мою музыку</button>` : refreshButton()}</div><span class="vinyl-label" aria-hidden="true">YOUR MIX</span><span class="hero-index">MY LIBRARY</span></section>
+  <div class="chapter-line"><b>01 / ПОСЛЕ ПОЛУНОЧИ</b><span>音楽 · MUSIC ARCHIVE</span></div><section class="hero"><div class="hero-content"><span class="eyebrow">${icon("logo")}MYPLAYER / ГЛАВА 01</span><h2>Город затих.<br><span>Твой звук — нет.</span></h2><p>VK, SoundCloud, Spotify и YouTube Music.<br>Одна библиотека. Твой любимый звук.</p>${state.tracks.length ? `<button class="primary-button" data-queue="main" data-index="0">${icon("play")}Слушать мою музыку</button>` : refreshButton()}</div><span class="hero-stamp" aria-hidden="true">夜の音</span><span class="hero-index">AFTER DARK / VOL. 01</span></section>
   ${playlists.length ? `<section class="music-section"><div class="section-heading"><div><h2>Твои плейлисты</h2><p>Из любимых музыкальных сервисов</p></div><button class="text-button" data-page="library">Все ${icon("arrow")}</button></div><div class="card-row">${playlists.slice(0, 8).map(card).join("")}</div></section>` : ""}
   <section class="music-section"><div class="section-heading"><div><h2>Твоя музыка</h2><p>${state.source === "all" ? "Все источники. Без дублей." : names[state.source]}</p></div><button class="text-button" data-action="settings">Источники ${icon("arrow")}</button></div>${state.loading ? busy() : state.tracks.length ? trackList(state.tracks) + loadMoreButton() : empty("Здесь будет твой звук", "Подключи источники и обнови библиотеку.", '<button class="primary-button" data-action="settings">Подключить музыку</button>')}</section>`;
 }
@@ -214,7 +200,7 @@ function renderShell() {
   if (!api.token) return renderLogin();
   document.body.classList.remove("logged-out");
   const titles = {
-    home: "Привет, меломан",
+    home: "На твоей частоте",
     search: "Найди свой звук",
     library: "Моя медиатека",
     playlist: "Твоя музыка",
@@ -239,9 +225,9 @@ function renderShell() {
 function renderLogin(message = "") {
   document.body.classList.add("logged-out");
   closeModal();
-  $("#page-title").textContent = "Музыка ближе";
+  $("#page-title").textContent = "MyPlayer / After dark";
   $("#main").innerHTML =
-    `<section class="login-layout"><div class="login-art"><span class="eyebrow">MYPLAYER · YOUR MUSIC, TOGETHER</span><h2>Все твои треки.<br><span>Только твой вайб.</span></h2><p>Собери VK, SoundCloud и Spotify<br>в одном музыкальном пространстве.</p><div class="login-vinyl" aria-hidden="true"></div></div><form id="login-form" class="login-card"><span class="eyebrow">РАДЫ ВИДЕТЬ ТЕБЯ</span><h2>Включай своё.</h2><p>Подключись к своему музыкальному серверу.</p><label for="api-url">Адрес сервера</label><input type="url" id="api-url" name="server" value="${escapeHtml(api.base)}" placeholder="https://myplayer.example.com" required autocomplete="url" inputmode="url"><label for="login-password">Пароль</label><input id="login-password" name="password" type="password" placeholder="Пароль твоего сервера" required autocomplete="current-password"><p id="login-error" class="form-error" role="alert">${escapeHtml(message)}</p><button class="primary-button" type="submit">${icon("play")}Войти в мою музыку</button><small>Твои аккаунты остаются у тебя.<br>Пароль не сохраняется в браузере.</small></form></section>`;
+    `<section class="login-layout"><div class="login-art"><span class="eyebrow">ЛИЧНЫЙ МУЗЫКАЛЬНЫЙ АРХИВ / VOL. 01</span><h2>Весь город спит.<br><span>Ты слушаешь.</span></h2><p>Собери VK, SoundCloud, Spotify и YouTube Music<br>в одном музыкальном пространстве.</p><span class="login-stamp" aria-hidden="true">夜 / AFTER DARK</span></div><form id="login-form" class="login-card"><span class="eyebrow">НАЧАТЬ НОВУЮ ГЛАВУ</span><h2>Включай своё.</h2><p>Подключись к своему музыкальному серверу.</p><label for="api-url">Адрес сервера</label><input type="url" id="api-url" name="server" value="${escapeHtml(api.base)}" placeholder="https://myplayer.example.com" required autocomplete="url" inputmode="url"><label for="login-password">Пароль</label><input id="login-password" name="password" type="password" placeholder="Пароль твоего сервера" required autocomplete="current-password"><p id="login-error" class="form-error" role="alert">${escapeHtml(message)}</p><button class="primary-button" type="submit">${icon("play")}Войти в мою музыку</button><small>Твои аккаунты остаются у тебя.<br>Пароль не сохраняется в браузере.</small></form></section>`;
 }
 async function loadView() {
   if (!api.token) return;
@@ -469,11 +455,7 @@ function updatePlayer() {
   $("#player-artist").textContent = player.loading
     ? "Подключаем аудио…"
     : track?.artist || "Твоя музыка ждёт";
-  const src = track
-    ? imageURL(track.cover).replace(/&amp;/g, "&")
-    : "assets/icon.svg";
-  if ($("#player-cover").getAttribute("src") !== src)
-    $("#player-cover").setAttribute("src", src);
+  artwork.setTrack($("#player-cover"), track);
   $("#play-toggle").innerHTML = player.loading
     ? '<span class="spinner"></span>'
     : icon(player.playing ? "pause" : "play");
@@ -543,7 +525,7 @@ function currentTrackModal() {
   if (!track) return toast("Сначала выбери трек в библиотеке");
   $("#modal-body").dataset.track = trackKey(track);
   showModal(
-    `<span class="eyebrow">СЕЙЧАС В ПЛЕЕРЕ · ${escapeHtml(names[track.source])}</span><section class="playlist-hero">${image(track.cover)}<div><h2>${escapeHtml(track.title)}</h2><p>${escapeHtml(track.artist)}</p></div></section><label class="seek-label" for="mobile-seek">Позиция трека <span id="mobile-time"></span></label><input id="mobile-seek" type="range" min="0" max="${player.duration}" value="${player.audio.currentTime}" aria-label="Позиция трека"><div class="modal-playback"><button class="icon-button" data-action="previous" aria-label="Предыдущий">${icon("next").replace("<svg ", '<svg style="transform:rotate(180deg)" ')}</button><button class="primary-button" data-action="toggle-audio"></button><button class="icon-button" data-action="next" aria-label="Следующий" ${player.index >= player.queue.length - 1 && !player.shuffle ? "disabled" : ""}>${icon("next")}</button></div>`,
+    `<span class="eyebrow">СЕЙЧАС В ПЛЕЕРЕ · ${escapeHtml(names[track.source])}</span><section class="playlist-hero">${trackImage(track)}<div><h2>${escapeHtml(track.title)}</h2><p>${escapeHtml(track.artist)}</p></div></section><label class="seek-label" for="mobile-seek">Позиция трека <span id="mobile-time"></span></label><input id="mobile-seek" type="range" min="0" max="${player.duration}" value="${player.audio.currentTime}" aria-label="Позиция трека"><div class="modal-playback"><button class="icon-button" data-action="previous" aria-label="Предыдущий">${icon("next").replace("<svg ", '<svg style="transform:rotate(180deg)" ')}</button><button class="primary-button" data-action="toggle-audio"></button><button class="icon-button" data-action="next" aria-label="Следующий" ${player.index >= player.queue.length - 1 && !player.shuffle ? "disabled" : ""}>${icon("next")}</button></div>`,
   );
   updatePlayer();
 }
