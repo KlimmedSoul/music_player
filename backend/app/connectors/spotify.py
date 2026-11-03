@@ -3,8 +3,6 @@
 ищет вариант на YouTube через yt-dlp (если установлен), иначе превью."""
 import base64
 import hashlib
-import logging
-import re
 import secrets
 import urllib.parse
 
@@ -14,8 +12,6 @@ from ..config import settings
 from ..db import store_get, store_set
 from .base import Playlist, Resolved, SourceUnavailable, Track
 
-log = logging.getLogger("spotify")
-
 AUTH_URL = "https://accounts.spotify.com/authorize"
 TOKEN_URL = "https://accounts.spotify.com/api/token"
 API = "https://api.spotify.com/v1"
@@ -24,6 +20,10 @@ SCOPES = "user-library-read playlist-read-private"
 
 class SpotifyConnector:
     name = "spotify"
+
+    def __init__(self, youtube=None):
+        from .ytmusic import YouTubeMusicConnector
+        self.youtube = youtube if youtube is not None else YouTubeMusicConnector()
 
     def is_configured(self) -> bool:
         return bool(settings.spotify_client_id and settings.spotify_client_secret)
@@ -183,51 +183,6 @@ class SpotifyConnector:
         return out
 
     # ---------- resolve ----------
-    @staticmethod
-    def _ytdlp(url: str) -> str | None:
-        """Резолв YouTube-URL через yt-dlp (optional dependency)."""
-        try:
-            import yt_dlp  # type: ignore
-        except ImportError:
-            return None
-        try:
-            with yt_dlp.YoutubeDL(
-                {"quiet": True, "no_warnings": True, "noplaylist": True}
-            ) as ydl:
-                info = ydl.extract_info(url, download=False)
-            return info.get("url") or None
-        except Exception as e:
-            log.warning("yt-dlp resolve failed: %s", e)
-            return None
-
-    async def search_youtube(self, title: str, artist: str, duration_ms: int) -> str | None:
-        """Бесплатный обход: ищем аудио-аналог на YouTube (нарушает ToS YT)."""
-        if not title:
-            return None
-        q = f"{artist} {title} official audio".strip()
-        try:
-            import yt_dlp  # type: ignore
-        except ImportError:
-            return None
-        try:
-            with yt_dlp.YoutubeDL(
-                {
-                    "quiet": True, "no_warnings": True, "extract_flat": True,
-                    "playlistend": 8,
-                }
-            ) as ydl:
-                info = ydl.extract_info(f"ytsearch8:{q}", download=False)
-            want = duration_ms / 1000
-            for entry in info.get("entries") or []:
-                dur = entry.get("duration") or 0
-                if want and not (want * 0.9 <= dur <= want * 1.15):
-                    continue
-                return self._ytdlp("https://youtu.be/" + entry["id"])
-            return None
-        except Exception as e:
-            log.warning("yt search failed: %s", e)
-            return None
-
     async def resolve(self, client: httpx.AsyncClient, external_id: str,
                       meta: dict | None = None, full_only: bool = False) -> Resolved:
         meta = meta or {}
@@ -242,11 +197,11 @@ class SpotifyConnector:
                 "duration_ms": data.get("duration_ms", 0),
                 "preview_url": data.get("preview_url"),
             }
-        url = await self.search_youtube(
+        resolved = await self.youtube.search_and_resolve(
             track.get("title", ""), track.get("artist", ""), track.get("duration_ms", 0)
         )
-        if url:
-            return Resolved(stream_url=url, kind="proxy", ttl_s=2 * 3600)
+        if resolved:
+            return resolved
         if track.get("preview_url") and not full_only:
             return Resolved(stream_url=track["preview_url"], kind="direct", ttl_s=86400)
         raise SourceUnavailable("Spotify: полный трек недоступен. Выбери другую версию или источник." if full_only else "Spotify: ни полного звука, ни превью")

@@ -116,29 +116,20 @@ class SoundCloudConnector:
         if not transcodings:
             raise SourceUnavailable("SoundCloud: полный звук недоступен" if full_only else "SoundCloud: нет доступных транскодингов")
 
-        def pick(pred):
-            return next((t for t in transcodings if pred(t)), None)
-
-        # 1) обычный mp3 через http — проксируется без переписывания сегментов
-        t = pick(
-            lambda x: x.get("url")
-            and x["format"]["protocol"] == "http"
-            and "mp3" in x["format"].get("preset", "")
-        )
-        kind = "proxy"
-        if not t:
-            # 2) HLS (aac/hls-cipher): Safari играет нативно, не проксируем
-            t = pick(lambda x: x.get("url"))
-            kind = "direct"
-        if not t:
-            raise SourceUnavailable("SoundCloud: трек не играется")
-
-        sep = "&" if "?" in t["url"] else "?"
-        stream_url = t["url"] + sep + "client_id=" + settings.sc_client_id
-        if t["url"] and kind == "proxy":
-            # разворачиваем 302 в финальный mp3-URL (иначе он требует client_id на редирект)
-            r = await client.get(stream_url, follow_redirects=False, timeout=20)
-            final = r.headers.get("location")
-            if final:
-                stream_url = final
-        return Resolved(stream_url=stream_url, kind=kind, ttl_s=24 * 3600)
+        progressive = next((t for t in transcodings if t.get("url") and (t.get("format") or {}).get("protocol") in ("http", "progressive")), None)
+        selected = progressive or next((t for t in transcodings if t.get("url") and (t.get("format") or {}).get("protocol") == "hls"), None)
+        if not selected:
+            raise SourceUnavailable("SoundCloud: нет поддерживаемого полного потока")
+        response = await client.get(selected["url"], params=self._params(), follow_redirects=False, timeout=20)
+        if response.status_code in (301,302,303,307,308):
+            stream_url = response.headers.get("location")
+        elif response.status_code == 200:
+            try:
+                stream_url = response.json().get("url")
+            except (ValueError, AttributeError):
+                raise SourceUnavailable("SoundCloud: некорректный ответ потока")
+        else:
+            raise SourceUnavailable(f"SoundCloud: stream {response.status_code}")
+        if not isinstance(stream_url,str) or not stream_url.startswith(("https://","http://")):
+            raise SourceUnavailable("SoundCloud: ссылка потока отсутствует")
+        return Resolved(stream_url=stream_url,kind="proxy" if progressive else "direct",ttl_s=86400)

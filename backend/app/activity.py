@@ -1,8 +1,9 @@
 """Избранное, история прослушиваний и позиции «продолжить слушать»."""
-from .db import db, now
+from .db import db, now, synchronized, transactional
 from .library import _row_to_dict
 
 
+@transactional
 def toggle_favorite(source: str, ext: str, desired: bool | None = None) -> bool:
     """Лайк привязан к дедуп-ключу: один трек из разных сервисов — одно избранное."""
     conn = db()
@@ -10,7 +11,9 @@ def toggle_favorite(source: str, ext: str, desired: bool | None = None) -> bool:
         "SELECT dedup_key FROM tracks WHERE source=? AND external_id=?",
         (source, ext),
     ).fetchone()
-    dedup = trow["dedup_key"] if trow else f"{source}|{ext}"
+    if not trow:
+        raise ValueError("track not found")
+    dedup = trow["dedup_key"]
     match = "(track_source=? AND track_ext=?) OR dedup_key=?"
     existing = conn.execute(
         f"SELECT 1 FROM favorites WHERE {match}", (source, ext, dedup)
@@ -26,10 +29,10 @@ def toggle_favorite(source: str, ext: str, desired: bool | None = None) -> bool:
             (dedup, source, ext, now()),
         )
         favorite = True
-    conn.commit()
     return favorite
 
 
+@synchronized
 def list_favorites(limit: int = 1000):
     rows = db().execute(
         """SELECT t.* FROM favorites f
@@ -46,6 +49,7 @@ def list_favorites(limit: int = 1000):
     return {"items": items}
 
 
+@transactional
 def record_play(source, ext, position, duration, completed) -> dict:
     conn = db()
     conn.execute(
@@ -58,7 +62,6 @@ def record_play(source, ext, position, duration, completed) -> dict:
         "(SELECT id FROM plays ORDER BY played_at DESC LIMIT 1000)"
     )
     _update_position(conn, source, ext, position, duration, completed)
-    conn.commit()
     return {"ok": True}
 
 
@@ -82,6 +85,7 @@ def save_position(conn, source, ext, position) -> None:
     )
 
 
+@synchronized
 def list_history(limit: int = 30):
     rows = db().execute(
         """SELECT t.*, MAX(p.played_at) AS played_at FROM plays p
@@ -92,6 +96,7 @@ def list_history(limit: int = 30):
     return {"items": [_row_to_dict(r) for r in rows]}
 
 
+@transactional
 def report_position(source, ext, position) -> dict:
     conn = db()
     if position >= 10:
@@ -101,10 +106,10 @@ def report_position(source, ext, position) -> dict:
             "DELETE FROM positions WHERE track_source=? AND track_ext=?",
             (source, ext),
         )
-    conn.commit()
     return {"ok": True}
 
 
+@synchronized
 def list_positions():
     rows = db().execute(
         "SELECT * FROM positions WHERE updated_at>? ORDER BY updated_at DESC LIMIT 500",

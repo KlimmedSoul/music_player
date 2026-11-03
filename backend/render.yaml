@@ -27,6 +27,8 @@ services:
         sync: false
       - key: SPOTIFY_CLIENT_SECRET
         sync: false
+      - key: SPOTIFY_REDIRECT_URI
+        value: https://myplayer-after-dark-api.onrender.com/auth/spotify/callback
       - key: SPOTIFY_REFRESH_TOKEN
         sync: false
       - key: YTM_COOKIES_B64

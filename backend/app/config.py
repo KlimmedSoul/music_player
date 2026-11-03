@@ -1,4 +1,5 @@
 import os
+import secrets
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -11,7 +12,7 @@ def _b(name: str) -> bool:
 class Settings:
     port = int(os.getenv("PORT", "8080"))
     auth_password = os.getenv("AUTH_PASSWORD", "")
-    jwt_secret = os.getenv("JWT_SECRET", "dev-insecure-secret")
+    jwt_secret = os.getenv("JWT_SECRET", "").strip() or secrets.token_urlsafe(48)
     token_ttl_s = 7 * 24 * 3600
 
     # источники
@@ -36,3 +37,6 @@ class Settings:
 
 
 settings = Settings()
+
+if settings.jwt_secret in {"dev-insecure-secret", "genera…ing"} and os.getenv("MYPLAYER_ALLOW_INSECURE_DEV") != "1":
+    raise RuntimeError("Задай безопасный JWT_SECRET. Для изолированной разработки допустим MYPLAYER_ALLOW_INSECURE_DEV=1.")

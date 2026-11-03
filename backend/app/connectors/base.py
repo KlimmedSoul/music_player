@@ -37,13 +37,15 @@ def clean_title(title: str) -> str:
     t = title.lower().strip()
     t = re.sub(r"[\(\)\[\]{}]", " ", t)
     t = re.sub(r"\b(official( audio| video)?|lyrics?|hq|audio)\b", " ", t)
-    t = re.sub(r"\b(?:feat\.?|ft\.?)\s+.*$", " ", t)
+    t = re.sub(r"(?<=[\s,\-\(\[])(?:feat\.?|ft\.?)\s+.*$", " ", t)
     t = re.sub(r"\s+", " ", t).strip()
     return t
 
 
-def dedup_key(title: str, artist: str, duration_ms: int) -> str:
-    dur = round(duration_ms / 1000 / 5) if duration_ms else 0  # шаг 5 сек
+def dedup_key(title: str, artist: str, duration_ms: int, isrc: str | None = None) -> str:
+    if isrc and isrc.strip():
+        return "isrc:" + re.sub(r"[^A-Z0-9]", "", isrc.upper())
+    dur = str(round(duration_ms / 5000)) if duration_ms else "u"
     return f"{clean_title(title)}|{artist.lower().strip()}|{dur}"
 
 

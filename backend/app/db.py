@@ -2,10 +2,12 @@ import json
 import sqlite3
 import threading
 import time
+from contextlib import contextmanager
+from functools import wraps
 
 from .config import settings
 
-_lock = threading.Lock()
+_lock = threading.RLock()
 _conn: sqlite3.Connection | None = None
 
 SCHEMA = """
@@ -35,6 +37,7 @@ CREATE TABLE IF NOT EXISTS playlists (
     cover TEXT,
     total INTEGER NOT NULL DEFAULT 0,
     synced_at REAL NOT NULL,
+    tracks_loaded INTEGER NOT NULL DEFAULT 0,
     UNIQUE (source, external_id)
 );
 
@@ -56,11 +59,14 @@ CREATE TABLE IF NOT EXISTS url_cache (
 );
 
 -- выданные токены на /stream/<token> (защита от открытого прокси)
+CREATE INDEX IF NOT EXISTS idx_url_expiry ON url_cache(expires_at);
 CREATE TABLE IF NOT EXISTS issued_streams (
     token TEXT PRIMARY KEY,
     url TEXT NOT NULL,
     created_at REAL NOT NULL
 );
+
+CREATE INDEX IF NOT EXISTS idx_stream_created ON issued_streams(created_at);
 
 -- рантайм-токены (spotify oauth) и служебные значения
 CREATE TABLE IF NOT EXISTS store (
@@ -100,15 +106,47 @@ CREATE TABLE IF NOT EXISTS positions (
 """
 
 
+def synchronized(func):
+    """Serialize synchronous access to the one process-wide SQLite connection."""
+    @wraps(func)
+    def call(*args, **kwargs):
+        with _lock:
+            return func(*args, **kwargs)
+    return call
+
+
+@contextmanager
+def transaction():
+    # Never hold this lock across an await or a provider/network request.
+    with _lock:
+        with db() as conn:
+            yield conn
+
+
+def transactional(func):
+    @wraps(func)
+    def call(*args, **kwargs):
+        with transaction():
+            return func(*args, **kwargs)
+    return call
+
+
+@synchronized
 def db() -> sqlite3.Connection:
     global _conn
     if _conn is None:
-        _conn = sqlite3.connect(settings.db_path, check_same_thread=False)
-        _conn.row_factory = sqlite3.Row
-        _conn.execute("PRAGMA journal_mode=WAL")
-        with _lock:
-            _conn.executescript(SCHEMA)
-            _conn.commit()
+        conn = sqlite3.connect(settings.db_path, check_same_thread=False)
+        try:
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.executescript(SCHEMA)
+            if "tracks_loaded" not in {row[1] for row in conn.execute("PRAGMA table_info(playlists)")}:
+                conn.execute("ALTER TABLE playlists ADD COLUMN tracks_loaded INTEGER NOT NULL DEFAULT 0")
+            conn.commit()
+        except Exception:
+            conn.close()
+            raise
+        _conn = conn
     return _conn
 
 
@@ -117,15 +155,19 @@ def now() -> float:
 
 
 def store_set(key: str, value) -> None:
-    with _lock:
-        db().execute(
+    with transaction() as conn:
+        conn.execute(
             "INSERT INTO store(key,value) VALUES(?,?) "
             "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
             (key, json.dumps(value)),
         )
-        db().commit()
+
+
+@synchronized
+def fetch_one(sql: str, params=()):
+    return db().execute(sql, params).fetchone()
 
 
 def store_get(key: str, default=None):
-    row = db().execute("SELECT value FROM store WHERE key=?", (key,)).fetchone()
+    row = fetch_one("SELECT value FROM store WHERE key=?", (key,))
     return json.loads(row["value"]) if row else default

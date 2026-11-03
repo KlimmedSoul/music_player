@@ -1,4 +1,7 @@
 import time
+import hmac
+import threading
+from collections import OrderedDict, deque
 from contextlib import asynccontextmanager
 
 import httpx
@@ -12,7 +15,7 @@ from .artwork import find_cover
 from . import activity
 from .config import settings
 from .connectors.base import SourceUnavailable
-from .db import db
+from .db import db, fetch_one
 from . import library
 from .lyrics import find_lyrics
 from .stream import is_valid_token, proxy_stream
@@ -41,14 +44,32 @@ def client(request: Request) -> httpx.AsyncClient:
 
 
 class LoginBody(BaseModel):
-    password: str
+    password: str = Field(min_length=1, max_length=512)
+
+
+_login_attempts = OrderedDict()
+_login_lock = threading.Lock()
+_login_clock = time.monotonic
 
 
 @app.post("/auth/login")
-def login(body: LoginBody):
-    if not settings.auth_password or body.password != settings.auth_password:
-        raise HTTPException(403, "неверный пароль")
-    return {"token": create_token()}
+def login(request: Request, body: LoginBody):
+    address = request.client.host if request.client else "unknown"
+    current = _login_clock()
+    with _login_lock:
+        attempts = _login_attempts.setdefault(address, deque())
+        _login_attempts.move_to_end(address)
+        while len(_login_attempts) > 1024:
+            _login_attempts.popitem(last=False)
+        while attempts and attempts[0] <= current - 60:
+            attempts.popleft()
+        if len(attempts) >= 10:
+            raise HTTPException(429, "Слишком много попыток. Подожди минуту.", headers={"Retry-After":str(max(1,int(attempts[0]+60-current)+1))})
+        if not settings.auth_password or not hmac.compare_digest(body.password.encode(), settings.auth_password.encode()):
+            attempts.append(current)
+            raise HTTPException(403, "неверный пароль")
+        _login_attempts.pop(address, None)
+    return {"token":create_token()}
 
 
 @app.get("/healthz")
@@ -91,10 +112,10 @@ class PositionBody(TrackBody):
 
 
 def _known_track(body: TrackBody):
-    row = db().execute(
+    row = fetch_one(
         "SELECT 1 FROM tracks WHERE source=? AND external_id=?",
         (body.source, body.external_id),
-    ).fetchone()
+    )
     if not row:
         raise HTTPException(404, "трек не найден в библиотеке")
 
@@ -182,6 +203,8 @@ async def playlist_tracks(source: str, ext: str, request: Request):
         return {"items": await library.ensure_playlist_tracks(client(request), source, ext)}
     except SourceUnavailable as e:
         raise HTTPException(502, str(e))
+    except (httpx.HTTPError, ValueError):
+        raise HTTPException(502, "Источник вернул недоступный или некорректный ответ")
 
 
 @app.post("/resolve", dependencies=[auth_required])
@@ -194,6 +217,8 @@ async def resolve(request: Request, body: dict):
         return await library.resolve(client(request), source, str(ext), full_only=body.get("full_only") is True)
     except SourceUnavailable as e:
         raise HTTPException(502, str(e))
+    except (httpx.HTTPError, ValueError):
+        raise HTTPException(502, "Источник вернул недоступный или некорректный ответ")
 
 
 @app.get("/stream/{token}")
@@ -222,6 +247,8 @@ async def spotify_callback(code: str, state: str, request: Request):
         await conn.finish_login(client(request), code, state)
     except SourceUnavailable as e:
         raise HTTPException(502, str(e))
+    except (httpx.HTTPError, ValueError):
+        raise HTTPException(502, "Источник вернул недоступный или некорректный ответ")
     return HTMLResponse(
         "<h3>Spotify подключён 🙂</h3>Можно закрыть вкладку и нажать "
         "«Обновить» в приложении."

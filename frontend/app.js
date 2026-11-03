@@ -428,6 +428,7 @@ function resetSession() {
   state.query = "";
 }
 async function enter() {
+  const session = sessionVersion;
   state.page = "home";
   renderShell();
   await Promise.all([
@@ -436,7 +437,7 @@ async function enter() {
     syncFavorites().catch(() => {}),
     syncPositions().catch(() => {}),
   ]);
-  if (!api.token) return;
+  if (!api.token || session !== sessionVersion) return;
   renderSidebar();
   if (["home", "favorites", "recommendations"].includes(state.page)) renderContent();
   updatePlayer();
@@ -462,6 +463,7 @@ async function sync() {
           : "Библиотека обновлена",
     );
     await Promise.all([checkStatus(), loadView()]);
+    if (session === sessionVersion && api.token) await migrateLegacyFavorites();
   } catch (error) {
     if (session === sessionVersion && api.token) {
       state.errors = [error.message];
@@ -637,11 +639,9 @@ function flushPlayed(completed = false) {
   lastPlayed = null;
   if (!api.token || position <= 0) return;
   api.scrobble(track, { position, duration, completed });
-  if (completed) state.positions.delete(positionKey(track));
-  else if (position > 10) {
-    state.positions.set(positionKey(track), position);
-    api.savePosition(track, position);
-  }
+  if (completed || position < 10 || (duration && position >= duration - 10))
+    state.positions.delete(positionKey(track));
+  else state.positions.set(positionKey(track), position);
 }
 player.audio.addEventListener("timeupdate", () => {
   const track = player.current;

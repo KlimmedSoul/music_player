@@ -5,7 +5,7 @@ import httpx
 import test_frontend_contract as fixtures
 from app.connectors.spotify import SpotifyConnector
 from app.connectors.soundcloud import SoundCloudConnector
-from app.connectors.base import SourceUnavailable
+from app.connectors.base import SourceUnavailable, Resolved
 from app import library
 from app.db import db
 
@@ -21,12 +21,12 @@ class FullTrackTests(unittest.IsolatedAsyncioTestCase):
         connector = SpotifyConnector()
         meta = {'title':'Song','artist':'Artist','duration_ms':200000,'preview_url':'https://preview.example/30s.mp3'}
         async with httpx.AsyncClient() as client:
-            with patch.object(connector, 'search_youtube', AsyncMock(return_value=None)):
+            with patch.object(connector.youtube, 'search_and_resolve', AsyncMock(return_value=None)):
                 with self.assertRaises(SourceUnavailable):
                     await connector.resolve(client,'song',meta=meta,full_only=True)
                 preview = await connector.resolve(client,'song',meta=meta)
                 self.assertEqual(preview.stream_url,meta['preview_url'])
-            with patch.object(connector, 'search_youtube', AsyncMock(return_value='https://full.example/song.m4a')):
+            with patch.object(connector.youtube, 'search_and_resolve', AsyncMock(return_value=Resolved('https://full.example/song.m4a'))):
                 full = await connector.resolve(client,'song',meta=meta,full_only=True)
                 self.assertEqual(full.stream_url,'https://full.example/song.m4a')
                 self.assertEqual(full.kind,'proxy')
