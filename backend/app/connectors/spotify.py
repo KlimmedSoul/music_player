@@ -79,7 +79,16 @@ class SpotifyConnector:
     async def _access(self, client: httpx.AsyncClient) -> str:
         tok = store_get("spotify_tokens")
         if not tok:
-            raise SourceUnavailable("Spotify: не выполнен вход (/auth/spotify/start)")
+            if settings.spotify_refresh_token:
+                tok = {
+                    "access_token": None,
+                    "refresh_token": settings.spotify_refresh_token,
+                    "expires_at": 0,
+                }
+            else:
+                raise SourceUnavailable(
+                    "Spotify: не выполнен вход (вход или SPOTIFY_REFRESH_TOKEN)"
+                )
         if tok["expires_at"] - 60 > __import__("time").time():
             return tok["access_token"]
         r = await client.post(

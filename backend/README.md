@@ -85,7 +85,30 @@ app/
 открытого прокси); бэкенд за паролем+туннелем (Tailscale/Cloudflare),
 наружу из домашней сети его лучше не выставлять.
 
-## Дисклеймер
+## Деплой в облако (бесплатно, без домашнего ПК)
+
+Бэкенд stateless: токены в env, SQLite — временный кэш (при рестарте
+просто нажмите «Обновить» / `POST /library/refresh`). Готовый `Dockerfile`
+в корне.
+
+**Koyeb (рекоменд.)** — бесплатный web service, не засыпает, карта не нужна:
+1. Запушьте этот код в репозиторий (папка `backend/`).
+2. koyeb.com → Create App → Create Service → Deploy from Dockerfile
+   (подключите GitHub-репу, deploy path = `backend/`).
+3. Instance: Free (0.1 vCPU / 256MB — хватает, uvicorn ест ~60MB).
+4. В Environment variables: все переменные из `.env.example`
+   (`DB_PATH=/tmp/data.db` уже в образе).
+5. Порт: Koyeb сам подставит `PORT`. URL получите вида
+   `https://<app>-<service>.koyeb.app` — его фронт и указывает как API.
+
+**Render (запасной)** — бесплатный, но засыпает после 15 мин простоя
+(первый запрос ~минута). New → Web Service → root directory `backend/`,
+Dockerfile, Free instance.
+
+**Spotify в облаке**: refresh-токен живёт в БД, а диск временный. Получите
+его один раз при локальном запуске после `/auth/spotify/start`:
+`sqlite3 data.db "SELECT value FROM store WHERE key='spotify_tokens'"` →
+поле `refresh_token` → в env `SPOTIFY_REFRESH_TOKEN=*** вход больше не нужен.
 
 VK-аудио, SoundCloud api-v2 и YouTube-резолвинг — неофициальные пути,
 нарушающие ToS соответствующих сервисов. Только чтение собственных данных и

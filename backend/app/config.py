@@ -21,6 +21,9 @@ class Settings:
     spotify_client_id = os.getenv("SPOTIFY_CLIENT_ID", "").strip()
     spotify_client_secret = os.getenv("SPOTIFY_CLIENT_SECRET", "").strip()
     spotify_redirect_uri = os.getenv("SPOTIFY_REDIRECT_URI", "http://localhost:8600/callback")
+    # долгоживущий refresh-токен: один раз получили локально (/auth/spotify/start),
+    # вписали сюда — и вход больше не нужен (важно для облака без диска)
+    spotify_refresh_token = os.getenv("SPOTIFY_REFRESH_TOKEN", "").strip()
 
     db_path = os.getenv("DB_PATH", "data.db")
     media_cache_dir = os.getenv("MEDIA_CACHE_DIR", "./cache/media")
