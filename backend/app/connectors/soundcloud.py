@@ -101,7 +101,7 @@ class SoundCloudConnector:
         return [self._to_track(t) for t in r.json().get("collection", [])]
 
     async def resolve(self, client: httpx.AsyncClient, external_id: str,
-                      media: list | None = None) -> Resolved:
+                      media: list | None = None, full_only: bool = False) -> Resolved:
         """media = transcodings из списка лайков; иначе запрашиваем трек."""
         transcodings = media or []
         if not transcodings:
@@ -111,8 +111,10 @@ class SoundCloudConnector:
                 timeout=20,
             )
             transcodings = ((r.json().get("media") or {}).get("transcodings") or [])
+        if full_only:
+            transcodings = [t for t in transcodings if not t.get("snipped")]
         if not transcodings:
-            raise SourceUnavailable("SoundCloud: нет доступных транскодингов")
+            raise SourceUnavailable("SoundCloud: полный звук недоступен" if full_only else "SoundCloud: нет доступных транскодингов")
 
         def pick(pred):
             return next((t for t in transcodings if pred(t)), None)

@@ -362,3 +362,35 @@ dialog .playlist-hero h2 { font-size: 23px; letter-spacing: -.7px; }
 .status-dot.error { background: repeating-linear-gradient(45deg, #111 0 2px, #fff 2px 4px); }
 .sync-result.ok { color: var(--muted); }
 .sync-result.error { font-weight: 700; }
+/* Personal collections and recommendations. */
+.track-row { display: flex; min-width: 0; align-items: stretch; border-bottom: 1px solid #bbb; background: #fff6; }
+.track-row:nth-child(even) { background: #ddd3; }
+.track-row .track { flex: 1; min-width: 0; border: 0; background: transparent; }
+.track-row .track:hover { background: #ddd; }
+.track-row:has(.current-track), .track-row .current-track, .track-row .current-track:hover { background: #111; color: #fff; }
+.track-row:has(.current-track) .track-menu { color: #fff; }
+.track-menu { align-self: center; width: 36px; margin-inline: 3px; }
+.library-top { flex-wrap: wrap; }
+.library-top .primary-button { margin: 0; }
+.playlist-picker { max-height: 40vh; overflow-y: auto; }
+.playlist-picker .load-more { width: 100%; justify-content: flex-start; gap: 10px; margin-block: 10px; overflow-wrap: anywhere; }
+.playlist-picker small { margin-left: auto; color: #666; white-space: nowrap; }
+#playlist-form input, #edit-playlist-form input { width: 100%; background: #fff; color: #111; border: 1px solid #111; padding: 13px; margin: 12px 0; font-size: 16px; }
+#playlist-form label, #edit-playlist-form label { display: block; font-weight: 700; }
+@media(max-width: 767px) { .track-row .track { gap: 8px; } .track-row .track > svg { display: none; } .track-menu { width: 30px; padding: 5px; } }
+.mix-cover { position: relative; aspect-ratio: 1; overflow: hidden; background: #111; color: #fff; border: 2px solid #111; box-shadow: 4px 4px 0 #aaa; margin-bottom: 14px; isolation: isolate; }
+.mix-collage { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(2, 1fr); z-index: -2; }
+.mix-collage img { width: 100%; height: 100%; object-fit: cover; min-height: 0; min-width: 0; }
+.mix-collage img:only-child { grid-column: 1/-1; }
+.mix-cover::after { content: ''; position: absolute; inset: 0; background: linear-gradient(transparent 10%, #1118 40%, #111 98%); z-index: -1; }
+.mix-tag { position: absolute; top: 10px; left: 10px; background: #fff; color: #111; padding: 5px 8px; font: 9px monospace; letter-spacing: 1px; transform: rotate(-3deg); }
+.mix-cover > strong { position: absolute; bottom: 20px; left: 14px; right: 14px; font-size: clamp(18px, 2.2vw, 30px); font-weight: 800; line-height: 1.1; white-space: normal; overflow-wrap: anywhere; letter-spacing: -1px; }
+.mix-style-1 { transform: rotate(1deg); }
+.mix-style-2 .mix-tag { background: #111; color: #fff; border: 1px solid #fff; }
+.recommendation-row { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.recommendation-intro { padding: 30px; border: 2px solid #111; background: #fff; box-shadow: 4px 4px 0 #aaa; margin-bottom: 30px; }
+.recommendation-intro h2 { font-size: clamp(30px, 4vw, 48px); letter-spacing: -2px; margin: 16px 0; }
+.recommendation-intro p { color: #555; font-size: 12px; line-height: 1.8; max-width: 550px; }
+.recommendation-grid .mix-cover > strong { font-size: 26px; }
+@media (max-width:1150px) { .recommendation-row { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width:767px) { .recommendation-row { display: flex; } .card-row .mix-card { flex-basis: 160px; } .mix-cover > strong, .recommendation-grid .mix-cover > strong { font-size: 22px; } .mobile-nav button { min-width: 0; flex: 1; } .recommendation-intro { padding: 23px; } }

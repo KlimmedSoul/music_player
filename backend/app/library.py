@@ -169,9 +169,9 @@ async def ensure_playlist_tracks(client: httpx.AsyncClient, source: str, ext: st
     return playlist_tracks(source, ext)
 
 
-async def resolve(client: httpx.AsyncClient, source: str, external_id: str) -> dict:
+async def resolve(client: httpx.AsyncClient, source: str, external_id: str, full_only: bool = False) -> dict:
     """source+ext -> {stream_path | stream_url, kind}. Кэш URL с TTL."""
-    cache_key = f"{source}|{external_id}"
+    cache_key = f"{source}|{external_id}" + ("|full" if full_only else "")
     row = db().execute(
         "SELECT * FROM url_cache WHERE key=? AND expires_at>?", (cache_key, now())
     ).fetchone()
@@ -184,10 +184,10 @@ async def resolve(client: httpx.AsyncClient, source: str, external_id: str) -> d
         ).fetchone()
         meta = json.loads(trow["meta"]) if trow else {}
         if source == "soundcloud":
-            resolved = await conn.resolve(client, external_id, media=meta.get("media"))
+            resolved = await conn.resolve(client, external_id, media=meta.get("media"), full_only=full_only)
         elif source == "spotify":
             resolved = await conn.resolve(
-                client, external_id,
+                client, external_id, full_only=full_only,
                 meta={"title": trow["title"], "artist": trow["artist"],
                       "duration_ms": trow["duration_ms"],
                       "preview_url": meta.get("preview_url")} if trow else None,

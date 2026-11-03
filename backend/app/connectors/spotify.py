@@ -229,7 +229,7 @@ class SpotifyConnector:
             return None
 
     async def resolve(self, client: httpx.AsyncClient, external_id: str,
-                      meta: dict | None = None) -> Resolved:
+                      meta: dict | None = None, full_only: bool = False) -> Resolved:
         meta = meta or {}
         track = None
         if meta.get("title"):
@@ -247,6 +247,6 @@ class SpotifyConnector:
         )
         if url:
             return Resolved(stream_url=url, kind="proxy", ttl_s=2 * 3600)
-        if track.get("preview_url"):
+        if track.get("preview_url") and not full_only:
             return Resolved(stream_url=track["preview_url"], kind="direct", ttl_s=86400)
-        raise SourceUnavailable("Spotify: ни полного звука, ни превью")
+        raise SourceUnavailable("Spotify: полный трек недоступен. Выбери другую версию или источник." if full_only else "Spotify: ни полного звука, ни превью")
