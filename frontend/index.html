@@ -17,6 +17,7 @@
     <script src="api.js" defer></script>
     <script src="player.js" defer></script>
     <script src="artwork.js" defer></script>
+    <script src="collections.js" defer></script>
     <script src="app.js" defer></script>
   </head>
   <body>
@@ -104,6 +105,7 @@
         <button data-page="search" class="nav-link">
           <svg><use href="#i-search" /></svg>Поиск
         </button>
+        <button data-page="recommendations" class="nav-link"><svg><use href="#i-shuffle" /></svg>Для тебя</button>
       </nav>
       <div class="library-heading">
         <button data-page="library">
@@ -253,6 +255,7 @@
       <button data-page="library">
         <svg><use href="#i-library" /></svg><span>Моя медиатека</span>
       </button>
+      <button data-page="recommendations"><svg><use href="#i-shuffle" /></svg><span>Для тебя</span></button>
     </nav>
     <dialog id="modal">
       <button class="icon-button modal-close" aria-label="Закрыть">

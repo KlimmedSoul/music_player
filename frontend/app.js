@@ -25,6 +25,7 @@ const state = {
   source: "all",
   query: "",
   tracks: [],
+  recommendationTracks: [],
   playlists: [],
   playlist: null,
   playlistTracks: [],
@@ -125,10 +126,10 @@ function errorBanner(message) {
 }
 function trackList(items, queue = "main") {
   queues.set(queue, items.slice());
-  return `<div class="track-list">${items.map((track, i) => `<button class="track ${trackKey(track) === (player.current && trackKey(player.current)) ? "current-track" : ""}" data-queue="${queue}" data-index="${i}" aria-label="Включить ${escapeHtml(track.title)}"><span class="track-number">${i + 1}</span>${trackImage(track)}<span class="track-info"><strong>${escapeHtml(track.title || "Без названия")}</strong><small>${escapeHtml(track.artist || "Неизвестный исполнитель")} <span class="source-tag">${escapeHtml((track.sources || [track.source]).map((source) => names[source] || source).join(" · "))}</span></small></span><span class="track-duration">${time((track.duration_ms || 0) / 1000)}</span>${icon("play")}</button>`).join("")}</div>`;
+  return `<div class="track-list">${items.map((track, i) => `<div class="track-row"><button class="track ${trackKey(track) === (player.current && trackKey(player.current)) ? "current-track" : ""}" data-queue="${queue}" data-index="${i}" aria-label="Включить ${escapeHtml(track.title)}"><span class="track-number">${i + 1}</span>${trackImage(track)}<span class="track-info"><strong>${escapeHtml(track.title || "Без названия")}</strong><small>${escapeHtml(track.artist || "Неизвестный исполнитель")} <span class="source-tag">${escapeHtml((track.sources || [track.source]).map((source) => names[source] || source).join(" · "))}</span></small></span><span class="track-duration">${time((track.duration_ms || 0) / 1000)}</span>${icon("play")}</button><button class="track-menu icon-button" data-track-menu="${queue}" data-track-index="${i}" aria-label="Добавить ${escapeHtml(track.title)} в плейлист">${icon("plus")}</button></div>`).join("")}</div>`;
 }
 function card(playlist) {
-  return `<button class="music-card" data-playlist="${escapeHtml(playlistKey(playlist))}"><div class="cover-wrap">${image(playlist.cover)}<span class="source-badge">${escapeHtml(names[playlist.source] || playlist.source)}</span><span class="card-play">${icon("play")}</span></div><strong>${escapeHtml(playlist.title)}</strong><p>${Number(playlist.total) || 0} треков · ${escapeHtml(names[playlist.source] || playlist.source)}</p></button>`;
+  return `<button class="music-card" data-playlist="${escapeHtml(playlistKey(playlist))}"><div class="cover-wrap">${image(playlist.cover)}<span class="source-badge">${escapeHtml(playlist.source === "local" ? "На устройстве" : (names[playlist.source] || playlist.source))}</span><span class="card-play">${icon("play")}</span></div><strong>${escapeHtml(playlist.title)}</strong><p>${Number(playlist.total) || 0} треков · ${escapeHtml(playlist.source === "local" ? "На устройстве" : (names[playlist.source] || playlist.source))}</p></button>`;
 }
 function loadMoreButton() {
   return state.hasMore
@@ -137,17 +138,17 @@ function loadMoreButton() {
 }
 function renderSidebar() {
   $("#sidebar-list").innerHTML =
-    `<button class="side-item" data-page="favorites"><img src="assets/liked.svg" alt=""><span><strong>Любимые треки</strong><small>На этом устройстве · ${favorites().length}</small></span></button>${state.playlists
+    `<button class="side-item" data-page="favorites"><img src="assets/liked.svg" alt=""><span><strong>Любимые треки</strong><small>На этом устройстве · ${favorites().length}</small></span></button>${allPlaylists()
       .slice(0, 12)
       .map(
         (p) =>
-          `<button class="side-item" data-playlist="${escapeHtml(playlistKey(p))}">${image(p.cover)}<span><strong>${escapeHtml(p.title)}</strong><small>${escapeHtml(names[p.source])}</small></span></button>`,
+          `<button class="side-item" data-playlist="${escapeHtml(playlistKey(p))}">${image(p.cover)}<span><strong>${escapeHtml(p.title)}</strong><small>${escapeHtml(p.source === "local" ? "На устройстве" : p.source === "mix" ? "Для тебя" : names[p.source])}</small></span></button>`,
       )
       .join("")}`;
 }
 function homeContent() {
-  const playlists = state.playlists.filter(
-    (p) => state.source === "all" || p.source === state.source,
+  const playlists = allPlaylists().filter(
+    (p) => state.source === "all" || p.source === state.source || p.source === "local",
   );
   return `${state.errors.map(errorBanner).join("")}<div class="quick-grid"><button class="quick-card" data-page="favorites"><img src="assets/liked.svg" alt=""><strong>Любимые треки</strong></button>${playlists
     .slice(0, 3)
@@ -158,21 +159,21 @@ function homeContent() {
     .join("")}</div>
   <div class="chapter-line"><b>01 / ПОСЛЕ ПОЛУНОЧИ</b><span>音楽 · MUSIC ARCHIVE</span></div><section class="hero"><div class="hero-content"><span class="eyebrow">${icon("logo")}MYPLAYER / ГЛАВА 01</span><h2>Город затих.<br><span>Твой звук — нет.</span></h2><p>VK, SoundCloud, Spotify и YouTube Music.<br>Одна библиотека. Твой любимый звук.</p>${state.tracks.length ? `<button class="primary-button" data-queue="main" data-index="0">${icon("play")}Слушать мою музыку</button>` : refreshButton()}</div><span class="hero-stamp" aria-hidden="true">夜の音</span><span class="hero-index">AFTER DARK / VOL. 01</span></section>
   ${playlists.length ? `<section class="music-section"><div class="section-heading"><div><h2>Твои плейлисты</h2><p>Из любимых музыкальных сервисов</p></div><button class="text-button" data-page="library">Все ${icon("arrow")}</button></div><div class="card-row">${playlists.slice(0, 8).map(card).join("")}</div></section>` : ""}
-  <section class="music-section"><div class="section-heading"><div><h2>Твоя музыка</h2><p>${state.source === "all" ? "Все источники. Без дублей." : names[state.source]}</p></div><button class="text-button" data-action="settings">Источники ${icon("arrow")}</button></div>${state.loading ? busy() : state.tracks.length ? trackList(state.tracks) + loadMoreButton() : empty("Здесь будет твой звук", "Подключи источники и обнови библиотеку.", '<button class="primary-button" data-action="settings">Подключить музыку</button>')}</section>`;
+  ${recommendationContent()}<section class="music-section"><div class="section-heading"><div><h2>Твоя музыка</h2><p>${state.source === "all" ? "Все источники. Без дублей." : names[state.source]}</p></div><button class="text-button" data-action="settings">Источники ${icon("arrow")}</button></div>${state.loading ? busy() : state.tracks.length ? trackList(state.tracks) + loadMoreButton() : empty("Здесь будет твой звук", "Подключи источники и обнови библиотеку.", '<button class="primary-button" data-action="settings">Подключить музыку</button>')}</section>`;
 }
 function searchContent() {
   return `${state.errors.map(errorBanner).join("")}${state.loading ? busy("Ищем в твоей библиотеке…") : state.tracks.length ? `<div class="section-heading"><h2>${state.query ? "Нашлось в библиотеке" : "Все твои треки"}</h2></div>${trackList(state.tracks)}${loadMoreButton()}` : empty(state.query ? "Ничего не найдено" : "Музыка ещё не загружена", state.query ? "Попробуй другое название или выбери другой источник." : "Поиск работает по импортированным трекам. Нажми «Обновить», чтобы загрузить музыку из сервисов.", state.query ? "" : refreshButton())}`;
 }
 function libraryContent() {
-  const playlists = state.playlists.filter(
-    (p) => state.source === "all" || p.source === state.source,
+  const playlists = allPlaylists().filter(
+    (p) => state.source === "all" || p.source === state.source || p.source === "local",
   );
-  return `${state.errors.map(errorBanner).join("")}<div class="library-top"><div class="section-heading"><h2>Всегда под рукой</h2></div><button class="text-button" data-action="refresh" ${state.refreshing ? "disabled" : ""}>${icon("repeat")}${state.refreshing ? "Обновляем…" : "Обновить"}</button></div><button class="favorites-tile" data-page="favorites"><img src="assets/liked.svg" alt=""><span><strong>Любимые треки</strong><small>${favorites().length} треков · На этом устройстве</small></span>${icon("arrow")}</button>${playlists.length ? `<div class="library-grid">${playlists.map(card).join("")}</div>` : state.loading ? busy() : empty("Плейлисты появятся здесь", "Они загружаются из подключённых сервисов.", '<button class="primary-button" data-action="settings">Мои источники</button>')}`;
+  return `${state.errors.map(errorBanner).join("")}<div class="library-top"><div class="section-heading"><h2>Всегда под рукой</h2></div><button class="primary-button" data-action="create-playlist">${icon("plus")}Создать плейлист</button><button class="text-button" data-action="refresh" ${state.refreshing ? "disabled" : ""}>${icon("repeat")}${state.refreshing ? "Обновляем…" : "Обновить"}</button></div><button class="favorites-tile" data-page="favorites"><img src="assets/liked.svg" alt=""><span><strong>Любимые треки</strong><small>${favorites().length} треков · На этом устройстве</small></span>${icon("arrow")}</button>${playlists.length ? `<div class="library-grid">${playlists.map(card).join("")}</div>` : state.loading ? busy() : empty("Плейлисты появятся здесь", "Они загружаются из подключённых сервисов.", '<button class="primary-button" data-action="settings">Мои источники</button>')}`;
 }
 function playlistContent() {
   const p = state.playlist;
   if (!p) return empty("Плейлист не найден", "Открой его из медиатеки.");
-  return `<button class="back-button" data-page="library">${icon("arrow")}В медиатеку</button><section class="playlist-hero">${image(p.cover, `Обложка ${p.title}`)}<div><span class="eyebrow">ПЛЕЙЛИСТ · ${escapeHtml(names[p.source])}</span><h2>${escapeHtml(p.title)}</h2><p>${state.loading ? "Загружаем состав…" : `${state.playlistTracks.length} треков`}</p></div></section>${state.errors.map(errorBanner).join("")}${state.loading ? busy() : state.playlistTracks.length ? `<div class="playlist-actions"><button class="primary-button" data-queue="playlist" data-index="0">${icon("play")}Слушать</button></div>${trackList(state.playlistTracks, "playlist")}` : empty("В плейлисте пока нет треков", "Обнови библиотеку или выбери другой плейлист.")}`;
+  return `<button class="back-button" data-page="library">${icon("arrow")}В медиатеку</button><section class="playlist-hero">${image(p.cover, `Обложка ${p.title}`)}<div><span class="eyebrow">ПЛЕЙЛИСТ · ${escapeHtml(p.source === "local" ? "На устройстве" : p.source === "mix" ? "Для тебя" : names[p.source])}</span><h2>${escapeHtml(p.title)}</h2><p>${state.loading ? "Загружаем состав…" : `${state.playlistTracks.length} треков`}</p></div></section>${p.source === "mix" ? '<button class="primary-button" data-action="save-mix">Сохранить микс в плейлисты</button>' : ""}${p.source === "local" ? '<button class="text-button" data-action="edit-playlist">Изменить / скачать плейлист'+icon("arrow")+'</button>' : ""}${state.errors.map(errorBanner).join("")}${state.loading ? busy() : state.playlistTracks.length ? `<div class="playlist-actions"><button class="primary-button" data-queue="playlist" data-index="0">${icon("play")}Слушать</button></div>${trackList(state.playlistTracks, "playlist")}` : empty("В плейлисте пока нет треков", "Обнови библиотеку или выбери другой плейлист.")}`;
 }
 function favoritesContent() {
   const items = favorites().filter(
@@ -193,6 +194,7 @@ function renderContent() {
     library: libraryContent,
     playlist: playlistContent,
     favorites: favoritesContent,
+    recommendations: recommendationsPage,
   }[state.page]();
   renderSidebar();
 }
@@ -205,6 +207,7 @@ function renderShell() {
     library: "Моя медиатека",
     playlist: "Твоя музыка",
     favorites: "Любимые треки",
+    recommendations: "Твои рекомендации",
   };
   $("#page-title").innerHTML =
     `${titles[state.page]}<span class="green-dot">.</span>`;
@@ -245,9 +248,9 @@ async function loadView() {
     if (page === "playlist") {
       const p = state.playlist;
       if (!p) return;
-      const data = await api.playlistTracks(p.source, p.external_id, {
-        signal,
-      });
+      const data = p.source === "mix" ? {items:p.items || []} : p.source === "local"
+        ? {items: localPlaylists().find(item => item.external_id === p.external_id)?.items || []}
+        : await api.playlistTracks(p.source, p.external_id, {signal});
       if (version !== viewVersion || token !== api.token) return;
       state.playlistTracks = data.items || [];
     } else if (page !== "favorites") {
@@ -261,6 +264,7 @@ async function loadView() {
                 signal,
               }),
               api.playlists({ signal }),
+              ...(["home", "recommendations"].includes(page) ? [api.tracks({source:state.source, limit:200, signal})] : []),
             ];
       const results = await Promise.allSettled(jobs);
       if (version !== viewVersion || token !== api.token) return;
@@ -275,7 +279,8 @@ async function loadView() {
           state.cursor = result.value.next_cursor;
           state.hasMore =
             state.tracks.length === 50 && Number.isFinite(state.cursor);
-        } else state.playlists = result.value.items || [];
+        } else if (index === 2) state.recommendationTracks = result.value.items || [];
+        else state.playlists = result.value.items || [];
       });
       if (results[0].status === "rejected" && page !== "library") {
         state.tracks = [];
@@ -353,6 +358,7 @@ function resetSession() {
   clearTimeout(searchTimer);
   player.reset();
   state.tracks = [];
+  state.recommendationTracks = [];
   state.playlists = [];
   state.playlistTracks = [];
   state.status = {};
@@ -518,7 +524,7 @@ function toggleFavorite() {
   write("myplayer-favorites", items.slice(0, 1000));
   updatePlayer();
   renderSidebar();
-  if (state.page === "favorites") renderContent();
+  if (["favorites", "home", "recommendations"].includes(state.page)) renderContent();
 }
 function currentTrackModal() {
   const track = player.current;
@@ -537,14 +543,16 @@ document.addEventListener("click", (event) => {
     closeModal();
     return;
   }
+  if (button.dataset.trackMenu) {
+    trackMenu(button.dataset.trackMenu, Number(button.dataset.trackIndex));
+    return;
+  }
   if (button.dataset.page) {
     closeModal();
     navigate(button.dataset.page);
   }
   if (button.dataset.playlist) {
-    const p = state.playlists.find(
-      (item) => playlistKey(item) === button.dataset.playlist,
-    );
+    const p = findPlaylist(button.dataset.playlist);
     if (p) {
       closeModal();
       navigate("playlist", p);
@@ -552,6 +560,7 @@ document.addEventListener("click", (event) => {
   }
   if (button.dataset.source) {
     state.source = button.dataset.source;
+    state.recommendationTracks = [];
     state.tracks = [];
     state.loading = true;
     renderShell();
@@ -586,6 +595,9 @@ document.addEventListener("click", (event) => {
       "open-current": "current",
     }[button.id];
   switch (action) {
+    case "save-mix": saveCurrentMix(); break;
+    case "create-playlist": createPlaylistDialog(); break;
+    case "edit-playlist": editPlaylistDialog(); break;
     case "refresh":
       closeModal();
       sync();
@@ -707,14 +719,12 @@ api.addEventListener("unauthorized", () => {
 window.addEventListener("popstate", () => {
   if (!api.token) return;
   const [page, key] = location.hash.slice(1).split("/");
-  state.page = ["home", "search", "library", "favorites"].includes(page)
+  state.page = ["home", "search", "library", "favorites", "recommendations"].includes(page)
     ? page
     : "home";
   if (page === "playlist" && key) {
     try {
-      state.playlist = state.playlists.find(
-        (p) => playlistKey(p) === decodeURIComponent(key),
-      );
+      state.playlist = findPlaylist(decodeURIComponent(key));
       if (state.playlist) state.page = "playlist";
     } catch {}
   }

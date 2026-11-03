@@ -158,7 +158,7 @@ class MusicAPI extends EventTarget {
     return this.request("/resolve", {
       ...options,
       method: "POST",
-      body: { source: track.source, external_id: String(track.external_id) },
+      body: { source: track.source, external_id: String(track.external_id), full_only: true },
     });
   }
   artwork(track, options) {
