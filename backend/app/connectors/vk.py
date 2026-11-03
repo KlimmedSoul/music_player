@@ -93,7 +93,7 @@ class VKConnector:
                         cover=(info.get("cover") or [{}])[-1].get("url")
                         if isinstance(info.get("cover"), list) and info.get("cover")
                         else None,
-                        total=info.get("main_artists_count", 0),
+                        total=0,
                     )
                 )
         except SourceUnavailable as e:

@@ -45,7 +45,7 @@ class Connector:
 
 class ContractTests(unittest.TestCase):
     def setUp(self):
-        for table in ["tracks", "playlists", "playlist_items", "url_cache", "issued_streams", "store"]:
+        for table in ["tracks", "playlists", "playlist_items", "url_cache", "issued_streams", "store", "favorites", "plays", "positions"]:
             db().execute(f"DELETE FROM {table}")
         db().commit()
         self.connectors = patch.dict(library.CONNECTORS, {"vk": Connector("vk"), "soundcloud": Connector("soundcloud"), "spotify": Connector("spotify", fail=True)}, clear=True)
@@ -128,6 +128,41 @@ class ContractTests(unittest.TestCase):
         direct = self.client.post("/resolve", headers=self.headers, json={"source": "vk", "external_id": "direct"}).json()
         self.assertEqual(direct["kind"], "direct")
         self.assertEqual(self.client.get("/stream/invalid").status_code, 404)
+
+    def test_favorites_are_shared_and_deduped_across_sources(self):
+        self.refresh()  # vk and soundcloud copies of "Shared song" share a dedup key
+        self.assertEqual(self.client.get("/favorites", headers=self.headers).json()["items"], [])
+        toggle = self.client.post("/favorites/toggle", headers=self.headers, json={"source": "vk", "external_id": "1"})
+        self.assertEqual(toggle.json(), {"favorite": True})
+        items = self.client.get("/favorites", headers=self.headers).json()["items"]
+        self.assertEqual([(i["source"], i["external_id"]) for i in items], [("vk", "1")])
+        # the same track from another service refers to the same favorite
+        self.assertEqual(self.client.post("/favorites/toggle", headers=self.headers, json={"source": "soundcloud", "external_id": "1"}).json(), {"favorite": False})
+        self.assertEqual(self.client.get("/favorites", headers=self.headers).json()["items"], [])
+        self.assertEqual(self.client.post("/favorites/toggle", headers=self.headers, json={"source": "vk", "external_id": "ghost"}).status_code, 404)
+
+    def test_plays_positions_and_history(self):
+        self.refresh()
+        play = lambda **kw: self.client.post("/plays", headers=self.headers, json={"source": "vk", "external_id": "1", **kw})
+        self.assertEqual(play(position_s=20, duration_s=60, completed=False).status_code, 200)
+        positions = self.client.get("/positions", headers=self.headers).json()["items"]
+        self.assertEqual([(p["track_source"], p["position_s"]) for p in positions], [("vk", 20)])
+        # history dedupes across services
+        play(source="soundcloud", position_s=5, duration_s=60)
+        history = self.client.get("/history", headers=self.headers).json()["items"]
+        self.assertEqual([h["title"] for h in history], ["Shared song"])
+        self.assertEqual(play(position_s=60, duration_s=60, completed=True).status_code, 200)
+        self.assertEqual(self.client.get("/positions", headers=self.headers).json()["items"], [])
+
+    def test_positions_upsert_and_status_reports_last_refresh(self):
+        self.refresh()
+        body = {"source": "vk", "external_id": "1", "position_s": 42}
+        self.client.post("/positions", headers=self.headers, json=body)
+        self.client.post("/positions", headers=self.headers, json={**body, "position_s": 55})
+        items = self.client.get("/positions", headers=self.headers).json()["items"]
+        self.assertEqual([i["position_s"] for i in items], [55])
+        status = self.client.get("/status", headers=self.headers).json()
+        self.assertTrue(status["last_refresh"]["sources"]["vk"].startswith("ok:"))
 
 
 if __name__ == "__main__":

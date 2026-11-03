@@ -14,6 +14,10 @@ class MusicPlayer extends EventTarget {
     this.version = 0;
     this.retried = false;
     this.controller = null;
+    this.prewarm = new Map(); // source|ext -> {data, at}: уже разрешённый следующий трек
+    this.mediaPositionAt = 0;
+    this.sessionEpoch = 0;
+    this.prewarmControllers = new Set();
     for (const event of [
       "play",
       "pause",
@@ -25,7 +29,20 @@ class MusicPlayer extends EventTarget {
       "volumechange",
     ])
       this.audio.addEventListener(event, () => this.emit());
+    this.audio.addEventListener("play", () => this.syncMediaSession());
+    this.audio.addEventListener("pause", () => this.syncMediaSession());
+    this.audio.addEventListener("loadedmetadata", () =>
+      this.syncMediaPosition(true),
+    );
+    this.audio.addEventListener("timeupdate", () => this.syncMediaPosition());
     this.audio.addEventListener("ended", () => {
+      const finished = this.current;
+      if (finished)
+        this.dispatchEvent(
+          new CustomEvent("trackend", {
+            detail: { track: finished, position: this.duration || 0, duration: this.duration || 0 },
+          }),
+        );
       if (this.repeat) {
         this.audio.currentTime = 0;
         this.play();
@@ -73,17 +90,77 @@ class MusicPlayer extends EventTarget {
   emit() {
     this.dispatchEvent(new Event("change"));
   }
+  /* Lock-screen / Bluetooth controls: metadata, play state and the progress bar. */
+  syncMediaSession() {
+    if (!("mediaSession" in navigator)) return;
+    const track = this.current;
+    if (track && typeof MediaMetadata !== "undefined") {
+      const cover = document.querySelector("#player-cover");
+      const artwork =
+        cover && !cover.src.endsWith("/assets/cover.svg")
+          ? [{ src: cover.src }]
+          : [];
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: track.title,
+        artist: track.artist,
+        album: track.album || "",
+        artwork,
+      });
+    }
+    try {
+      navigator.mediaSession.playbackState = this.playing
+        ? "playing"
+        : this.current
+          ? "paused"
+          : "none";
+    } catch {}
+    this.syncMediaPosition();
+  }
+  syncMediaPosition(force = false) {
+    if (!("mediaSession" in navigator) || !navigator.mediaSession.setPositionState)
+      return;
+    const duration = this.duration;
+    const now = Date.now();
+    if (!force && now - this.mediaPositionAt < 3000) return;
+    if (!Number.isFinite(duration) || duration <= 0) return;
+    this.mediaPositionAt = now;
+    try {
+      navigator.mediaSession.setPositionState({
+        duration,
+        position: Math.min(this.audio.currentTime || 0, duration),
+        playbackRate: 1,
+      });
+    } catch {}
+  }
+  prewarmNext() {
+    const next = !this.shuffle && this.queue[this.index + 1];
+    if (!next) return;
+    const key = `${this.api.base}|${next.source}|${next.external_id}`;
+    if (this.prewarm.has(key)) return;
+    const epoch = this.sessionEpoch, token = this.api.token;
+    const controller = new AbortController();
+    this.prewarmControllers.add(controller);
+    const warm = {at:Date.now(),data:null,token};
+    warm.promise = this.api.resolve(next, {signal:controller.signal}).then(data => {
+      if (epoch === this.sessionEpoch && token === this.api.token) { warm.data = data; warm.at = Date.now(); }
+      return warm.data;
+    }).catch(() => { if (this.prewarm.get(key) === warm) this.prewarm.delete(key); return null; })
+      .finally(() => this.prewarmControllers.delete(controller));
+    this.prewarm.set(key, warm);
+    while (this.prewarm.size > 6) this.prewarm.delete(this.prewarm.keys().next().value);
+  }
   fail(message) {
     this.loading = false;
     this.audio.pause();
     this.emit();
     this.dispatchEvent(new CustomEvent("error", { detail: message }));
   }
-  select(queue, index) {
+  select(queue, index, position = 0) {
+    this.dispatchEvent(new Event("trackchange"));
     this.queue = queue.slice();
     this.index = index;
     this.retried = false;
-    return this.load();
+    return this.load(position);
   }
   async load(position = 0, retry = false) {
     const track = this.current;
@@ -97,9 +174,13 @@ class MusicPlayer extends EventTarget {
     this.loading = true;
     this.emit();
     try {
-      const data = await this.api.resolve(track, {
-        signal: this.controller.signal,
-      });
+      const warmKey = `${this.api.base}|${track.source}|${track.external_id}`;
+      const warm = this.prewarm.get(warmKey);
+      const prefetched = !retry && warm && warm.token === this.api.token && Date.now() - warm.at < 5 * 60 * 1000
+        ? (warm.data || await warm.promise) : null;
+      if (version !== this.version) return;
+      const data = prefetched || await this.api.resolve(track, {signal:this.controller.signal});
+      this.prewarm.delete(warmKey);
       if (version !== this.version) return;
       const url = new URL(
         data.kind === "proxy" ? data.stream_path : data.stream_url,
@@ -128,6 +209,7 @@ class MusicPlayer extends EventTarget {
         });
       }
       await this.audio.play();
+      this.prewarmNext();
     } catch (error) {
       if (version !== this.version || error.name === "AbortError") return;
       if (error.name === "NotAllowedError")
@@ -203,7 +285,16 @@ class MusicPlayer extends EventTarget {
     this.queue = [];
     this.index = -1;
     this.loading = false;
-    if ("mediaSession" in navigator) navigator.mediaSession.metadata = null;
+    this.sessionEpoch++;
+    for (const controller of this.prewarmControllers) controller.abort();
+    this.prewarmControllers.clear();
+    this.prewarm.clear();
+    if ("mediaSession" in navigator) {
+      navigator.mediaSession.metadata = null;
+      try {
+        navigator.mediaSession.playbackState = "none";
+      } catch {}
+    }
     this.emit();
   }
 }

@@ -10,6 +10,7 @@ class ApiError extends Error {
 class MusicAPI extends EventTarget {
   constructor() {
     super();
+    this.activityWrites = new Map();
     this.base =
       this.read(localStorage, "myplayer-api") ||
       (location.protocol.startsWith("http")
@@ -63,7 +64,7 @@ class MusicAPI extends EventTarget {
   }
   async request(
     path,
-    { method = "GET", body, signal, timeout = 90000, auth = true } = {},
+    { method = "GET", body, signal, timeout = 90000, auth = true, keepalive = false } = {},
   ) {
     const controller = new AbortController();
     const abort = () => controller.abort(signal.reason);
@@ -77,6 +78,7 @@ class MusicAPI extends EventTarget {
     try {
       const response = await fetch(`${this.base}${path}`, {
         method,
+        keepalive,
         signal: controller.signal,
         credentials: "omit",
         cache: "no-store",
@@ -166,6 +168,59 @@ class MusicAPI extends EventTarget {
       title: String(track.title || "").slice(0, 200),
       artist: String(track.artist || "").slice(0, 200),
     })}`, { timeout: 12000, ...options });
+  }
+  lyrics(track, options) {
+    return this.request(`/lyrics?${new URLSearchParams({
+      title: String(track.title || "").slice(0, 200),
+      artist: String(track.artist || "").slice(0, 200),
+      duration_s: Math.round((track.duration_ms || 0) / 1000),
+    })}`, { timeout: 20000, ...options });
+  }
+  favorites(options) {
+    return this.request("/favorites", options);
+  }
+  toggleFavorite(track, options) {
+    return this.request("/favorites/toggle", {
+      ...options,
+      method: "POST",
+      body: { source: track.source, external_id: String(track.external_id) },
+    });
+  }
+  setFavorite(track, favorite = true, options) {
+    return this.request("/favorites/toggle", {
+      ...options, method: "POST",
+      body: {source:track.source, external_id:String(track.external_id), favorite},
+    });
+  }
+  history(options) {
+    return this.request(`/history?${new URLSearchParams({ limit: 30 })}`, options);
+  }
+  enqueueActivity(track, path, body) {
+    const base = this.base, token = this.token;
+    const key = JSON.stringify([base, token, track.source, String(track.external_id)]);
+    const previous = this.activityWrites.get(key) || Promise.resolve();
+    const pending = previous.catch(() => {}).then(() => {
+      if (!token || this.base !== base || this.token !== token) return;
+      return this.request(path, {method:"POST", timeout:15000, keepalive:true, body});
+    }).catch(() => {}).finally(() => {
+      if (this.activityWrites.get(key) === pending) this.activityWrites.delete(key);
+    });
+    this.activityWrites.set(key, pending);
+    return pending;
+  }
+  scrobble(track, { position = 0, duration = 0, completed = false }) {
+    return this.enqueueActivity(track, "/plays", {
+      source:track.source, external_id:String(track.external_id),
+      position_s:Math.round(position), duration_s:Math.round(duration), completed,
+    });
+  }
+  savePosition(track, position) {
+    return this.enqueueActivity(track, "/positions", {
+      source:track.source, external_id:String(track.external_id), position_s:Math.round(position),
+    });
+  }
+  positions(options) {
+    return this.request("/positions", options);
   }
   spotify() {
     return this.request("/auth/spotify/start");

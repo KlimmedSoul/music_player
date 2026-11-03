@@ -1,18 +1,23 @@
 import time
+import hmac
+import threading
+from collections import OrderedDict, deque
 from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .auth import auth_required, create_token
 from .artwork import find_cover
+from . import activity
 from .config import settings
 from .connectors.base import SourceUnavailable
-from .db import db
+from .db import db, fetch_one
 from . import library
+from .lyrics import find_lyrics
 from .stream import is_valid_token, proxy_stream
 
 
@@ -39,14 +44,32 @@ def client(request: Request) -> httpx.AsyncClient:
 
 
 class LoginBody(BaseModel):
-    password: str
+    password: str = Field(min_length=1, max_length=512)
+
+
+_login_attempts = OrderedDict()
+_login_lock = threading.Lock()
+_login_clock = time.monotonic
 
 
 @app.post("/auth/login")
-def login(body: LoginBody):
-    if not settings.auth_password or body.password != settings.auth_password:
-        raise HTTPException(403, "неверный пароль")
-    return {"token": create_token()}
+def login(request: Request, body: LoginBody):
+    address = request.client.host if request.client else "unknown"
+    current = _login_clock()
+    with _login_lock:
+        attempts = _login_attempts.setdefault(address, deque())
+        _login_attempts.move_to_end(address)
+        while len(_login_attempts) > 1024:
+            _login_attempts.popitem(last=False)
+        while attempts and attempts[0] <= current - 60:
+            attempts.popleft()
+        if len(attempts) >= 10:
+            raise HTTPException(429, "Слишком много попыток. Подожди минуту.", headers={"Retry-After":str(max(1,int(attempts[0]+60-current)+1))})
+        if not settings.auth_password or not hmac.compare_digest(body.password.encode(), settings.auth_password.encode()):
+            attempts.append(current)
+            raise HTTPException(403, "неверный пароль")
+        _login_attempts.pop(address, None)
+    return {"token":create_token()}
 
 
 @app.get("/healthz")
@@ -61,8 +84,89 @@ def status():
     out = {}
     for name, conn in library.CONNECTORS.items():
         out[name] = "configured" if conn.is_configured() else "not_configured"
-    out["spotify_logged_in"] = bool(store_get("spotify_tokens"))
-    return {"sources": out}
+    return {
+        "sources": out,
+        "spotify_logged_in": bool(store_get("spotify_tokens")),
+        "last_refresh": store_get("last_refresh"),
+    }
+
+
+# ---------- Избранное / история / «продолжить слушать» ----------
+class TrackBody(BaseModel):
+    source: str
+    external_id: str
+
+
+class FavoriteBody(TrackBody):
+    favorite: bool | None = None
+
+
+class PlayBody(TrackBody):
+    position_s: float = Field(0, ge=0, le=86400, allow_inf_nan=False)
+    duration_s: float = Field(0, ge=0, le=86400, allow_inf_nan=False)
+    completed: bool = False
+
+
+class PositionBody(TrackBody):
+    position_s: float = Field(ge=0, le=86400, allow_inf_nan=False)
+
+
+def _known_track(body: TrackBody):
+    row = fetch_one(
+        "SELECT 1 FROM tracks WHERE source=? AND external_id=?",
+        (body.source, body.external_id),
+    )
+    if not row:
+        raise HTTPException(404, "трек не найден в библиотеке")
+
+
+@app.post("/favorites/toggle", dependencies=[auth_required])
+def favorite_toggle(body: FavoriteBody):
+    _known_track(body)
+    return {"favorite": activity.toggle_favorite(body.source, body.external_id, body.favorite)}
+
+
+@app.get("/favorites", dependencies=[auth_required])
+def favorites():
+    return activity.list_favorites()
+
+
+@app.post("/plays", dependencies=[auth_required])
+def play(body: PlayBody):
+    _known_track(body)
+    return activity.record_play(
+        body.source, body.external_id,
+        max(0, body.position_s), max(0, body.duration_s), body.completed,
+    )
+
+
+@app.get("/history", dependencies=[auth_required])
+def history(limit: int = 30):
+    return activity.list_history(max(1, min(limit, 100)))
+
+
+@app.post("/positions", dependencies=[auth_required])
+def position(body: PositionBody):
+    _known_track(body)
+    return activity.report_position(body.source, body.external_id, body.position_s)
+
+
+@app.get("/positions", dependencies=[auth_required])
+def positions():
+    return activity.list_positions()
+
+
+@app.get("/lyrics", dependencies=[auth_required])
+async def lyrics(
+    request: Request,
+    title: str = Query(min_length=1, max_length=200),
+    artist: str = Query(min_length=0, max_length=200),
+    duration_s: float = Query(0, ge=0, le=86400),
+):
+    try:
+        return await find_lyrics(client(request), title, artist, duration_s)
+    except (httpx.HTTPError, ValueError, TypeError):
+        raise HTTPException(502, "Сервер текстов не отвечает. Попробуй позже.")
 
 
 @app.post("/library/refresh", dependencies=[auth_required])
@@ -99,6 +203,8 @@ async def playlist_tracks(source: str, ext: str, request: Request):
         return {"items": await library.ensure_playlist_tracks(client(request), source, ext)}
     except SourceUnavailable as e:
         raise HTTPException(502, str(e))
+    except (httpx.HTTPError, ValueError):
+        raise HTTPException(502, "Источник вернул недоступный или некорректный ответ")
 
 
 @app.post("/resolve", dependencies=[auth_required])
@@ -111,6 +217,8 @@ async def resolve(request: Request, body: dict):
         return await library.resolve(client(request), source, str(ext), full_only=body.get("full_only") is True)
     except SourceUnavailable as e:
         raise HTTPException(502, str(e))
+    except (httpx.HTTPError, ValueError):
+        raise HTTPException(502, "Источник вернул недоступный или некорректный ответ")
 
 
 @app.get("/stream/{token}")
@@ -139,6 +247,8 @@ async def spotify_callback(code: str, state: str, request: Request):
         await conn.finish_login(client(request), code, state)
     except SourceUnavailable as e:
         raise HTTPException(502, str(e))
+    except (httpx.HTTPError, ValueError):
+        raise HTTPException(502, "Источник вернул недоступный или некорректный ответ")
     return HTMLResponse(
         "<h3>Spotify подключён 🙂</h3>Можно закрыть вкладку и нажать "
         "«Обновить» в приложении."
