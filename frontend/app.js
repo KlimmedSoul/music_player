@@ -36,12 +36,19 @@ const state = {
   refreshing: false,
   errors: [],
   history: [],
+  favorites: [],
+  positions: new Map(),
+  lastRefresh: null,
+  spotifyLoggedIn: false,
 };
 let viewVersion = 0,
   controller,
   searchTimer,
   toastTimer,
-  sessionVersion = 0;
+  sessionVersion = 0,
+  lastPlayed = null,
+  lastPosSent = 0,
+  lyricsActive = -2;
 const queues = new Map();
 const trackKey = (track) =>
   track.dedup_key || JSON.stringify([track.source, String(track.external_id)]);
@@ -60,13 +67,41 @@ function write(key, value) {
   } catch {}
 }
 function favorites() {
-  const value = read("myplayer-favorites", []);
-  return Array.isArray(value) ? value : [];
+  return state.favorites;
 }
 function isFavorite(track) {
   return (
     track && favorites().some((item) => trackKey(item) === trackKey(track))
   );
+}
+const positionKey = (track) =>
+  `${track.source}|${String(track.external_id)}`;
+async function syncFavorites(options) {
+  state.favorites = (await api.favorites(options)).items || [];
+}
+async function syncPositions(options) {
+  const data = await api.positions(options);
+  state.positions = new Map(
+    (data.items || []).map((p) => [
+      `${p.track_source}|${p.track_ext}`,
+      Number(p.position_s) || 0,
+    ]),
+  );
+}
+async function migrateLegacyFavorites() {
+  const legacy = read("myplayer-favorites", []);
+  if (!Array.isArray(legacy) || !legacy.length) return;
+  try {
+    for (const track of legacy.slice(0, 200))
+      if (!isFavorite(track)) await api.toggleFavorite(track);
+    state.favorites = (await api.favorites()).items || [];
+    localStorage.removeItem(`myplayer-favorites:${api.base}`);
+    toast("Любимые треки теперь хранятся на сервере");
+  } catch {}
+  if (api.token) {
+    renderSidebar();
+    if (state.page === "favorites") renderContent();
+  }
 }
 function time(seconds) {
   if (!Number.isFinite(seconds)) return "0:00";
@@ -137,7 +172,7 @@ function loadMoreButton() {
 }
 function renderSidebar() {
   $("#sidebar-list").innerHTML =
-    `<button class="side-item" data-page="favorites"><img src="assets/liked.svg" alt=""><span><strong>Любимые треки</strong><small>На этом устройстве · ${favorites().length}</small></span></button>${state.playlists
+    `<button class="side-item" data-page="favorites"><img src="assets/liked.svg" alt=""><span><strong>Любимые треки</strong><small>На сервере · ${favorites().length}</small></span></button>${state.playlists
       .slice(0, 12)
       .map(
         (p) =>
@@ -167,7 +202,7 @@ function libraryContent() {
   const playlists = state.playlists.filter(
     (p) => state.source === "all" || p.source === state.source,
   );
-  return `${state.errors.map(errorBanner).join("")}<div class="library-top"><div class="section-heading"><h2>Всегда под рукой</h2></div><button class="text-button" data-action="refresh" ${state.refreshing ? "disabled" : ""}>${icon("repeat")}${state.refreshing ? "Обновляем…" : "Обновить"}</button></div><button class="favorites-tile" data-page="favorites"><img src="assets/liked.svg" alt=""><span><strong>Любимые треки</strong><small>${favorites().length} треков · На этом устройстве</small></span>${icon("arrow")}</button>${playlists.length ? `<div class="library-grid">${playlists.map(card).join("")}</div>` : state.loading ? busy() : empty("Плейлисты появятся здесь", "Они загружаются из подключённых сервисов.", '<button class="primary-button" data-action="settings">Мои источники</button>')}`;
+  return `${state.errors.map(errorBanner).join("")}<div class="library-top"><div class="section-heading"><h2>Всегда под рукой</h2></div><button class="text-button" data-action="refresh" ${state.refreshing ? "disabled" : ""}>${icon("repeat")}${state.refreshing ? "Обновляем…" : "Обновить"}</button></div><button class="favorites-tile" data-page="favorites"><img src="assets/liked.svg" alt=""><span><strong>Любимые треки</strong><small>${favorites().length} треков · На сервере</small></span>${icon("arrow")}</button>${playlists.length ? `<div class="library-grid">${playlists.map(card).join("")}</div>` : state.loading ? busy() : empty("Плейлисты появятся здесь", "Они загружаются из подключённых сервисов.", '<button class="primary-button" data-action="settings">Мои источники</button>')}`;
 }
 function playlistContent() {
   const p = state.playlist;
@@ -181,7 +216,7 @@ function favoritesContent() {
       t.source === state.source ||
       t.sources?.includes(state.source),
   );
-  return `<div class="section-heading"><div><h2>То, что в самое сердце</h2><p>Сохранено на этом устройстве, без изменений в сервисах</p></div></div>${items.length ? trackList(items, "favorites") : empty("Пока ни одного трека", "Нажми «+» в плеере, чтобы сохранить любимую музыку.")}`;
+  return `<div class="section-heading"><div><h2>То, что в самое сердце</h2><p>Хранятся на твоём сервере — доступны с любого устройства</p></div></div>${items.length ? trackList(items, "favorites") : empty("Пока ни одного трека", "Нажми «+» в плеере, и трек останется в любимых на всех устройствах.")}`;
 }
 function renderContent() {
   const target = $("#view-content");
@@ -250,7 +285,10 @@ async function loadView() {
       });
       if (version !== viewVersion || token !== api.token) return;
       state.playlistTracks = data.items || [];
-    } else if (page !== "favorites") {
+    } else if (page === "favorites") {
+      await syncFavorites({ signal });
+      if (version !== viewVersion || token !== api.token) return;
+    } else {
       const jobs =
         page === "library"
           ? [api.playlists({ signal })]
@@ -342,6 +380,8 @@ async function checkStatus() {
     const data = await api.status();
     if (token !== api.token) return;
     state.status = data.sources || {};
+    state.lastRefresh = data.last_refresh || null;
+    state.spotifyLoggedIn = Boolean(data.spotify_logged_in);
   } catch (error) {
     if (api.token) toast(error.message);
   }
@@ -352,12 +392,17 @@ function resetSession() {
   controller?.abort();
   clearTimeout(searchTimer);
   player.reset();
+  lastPlayed = null;
   state.tracks = [];
   state.playlists = [];
   state.playlistTracks = [];
   state.status = {};
   state.refreshResults = {};
   state.history = [];
+  state.favorites = [];
+  state.positions = new Map();
+  state.lastRefresh = null;
+  state.spotifyLoggedIn = false;
   state.errors = [];
   state.loading = false;
   state.refreshing = false;
@@ -368,7 +413,16 @@ function resetSession() {
 async function enter() {
   state.page = "home";
   renderShell();
-  await Promise.all([checkStatus(), loadView()]);
+  await Promise.all([
+    checkStatus(),
+    loadView(),
+    syncFavorites().catch(() => {}),
+    syncPositions().catch(() => {}),
+  ]);
+  if (!api.token) return;
+  renderSidebar();
+  if (state.page === "favorites") renderContent();
+  migrateLegacyFavorites();
 }
 async function sync() {
   if (state.refreshing || !api.token) return;
@@ -404,8 +458,29 @@ async function sync() {
 }
 function settings() {
   const configured = (key) => state.status[key] === "configured";
+  const refresh = state.refreshResults;
+  const last = state.lastRefresh?.sources || {};
+  const health = (key) => refresh[key] || last[key] || "";
+  const healthClass = (value) =>
+    String(value).startsWith("error")
+      ? "error"
+      : String(value).startsWith("ok")
+        ? "ok"
+        : "";
+  const checkedAt = state.lastRefresh?.ts
+    ? new Date(state.lastRefresh.ts * 1000).toLocaleString("ru", {
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "";
   showModal(
-    `<span class="eyebrow">ТВОИ ИСТОЧНИКИ</span><h2>Вместе звучит лучше.</h2><p>Подключение и синхронизация музыкальных сервисов.</p><div class="source-list">${["vk", "soundcloud", "spotify", "ytmusic"].map((key) => `<div class="source-item"><strong>${names[key]}</strong><span class="status-dot ${configured(key) ? "ready" : ""}"></span><small>${configured(key) ? (key === "spotify" ? (state.status.spotify_logged_in ? "Подключён" : "Можно выполнить вход") : "Настроен") : "Не настроен"}</small></div>${state.refreshResults[key] ? `<p class="sync-result">${escapeHtml(state.refreshResults[key])}</p>` : ""}`).join("")}</div>${configured("spotify") ? '<button class="primary-button" data-action="spotify">Подключить Spotify</button><p id="spotify-result" role="status"></p>' : ""}<button class="load-more" data-action="refresh">Обновить библиотеку</button><p class="settings-note">VK и SoundCloud подключаются токенами в настройках сервера. Для Spotify нужен настроенный Redirect URI.</p><p class="server-address">${escapeHtml(api.base)}</p><button class="text-button" data-action="logout">Выйти / сменить сервер ${icon("arrow")}</button>`,
+    `<span class="eyebrow">ТВОИ ИСТОЧНИКИ</span><h2>Вместе звучит лучше.</h2><p>Подключение, синхронизация и здоровье музыкальных сервисов.</p><div class="source-list">${["vk", "soundcloud", "spotify", "ytmusic"].map((key) => {
+      const value = health(key);
+      const ready = configured(key) && !String(value).startsWith("error");
+      return `<div class="source-item"><strong>${names[key]}</strong><span class="status-dot ${ready ? "ready" : ""} ${String(value).startsWith("error") ? "error" : ""}"></span><small>${configured(key) ? (key === "spotify" && !state.spotifyLoggedIn ? "Настроен — нужен вход" : String(value).startsWith("error") ? "Не отвечает" : "Работает") : "Не настроен"}</small></div>${value ? `<p class="sync-result ${healthClass(value)}">${escapeHtml(String(value))}</p>` : ""}`;
+    }).join("")}</div><p class="settings-note">${checkedAt ? `Последняя синхронизация: ${checkedAt}` : "Библиотека ещё не синхронизировалась."}</p><button class="load-more" data-action="check-status">Проверить источники</button>${configured("spotify") ? '<button class="primary-button" data-action="spotify">Подключить Spotify</button><p id="spotify-result" role="status"></p>' : ""}<button class="load-more" data-action="refresh">Обновить библиотеку</button><p class="settings-note">VK, YouTube Music и SoundCloud подключаются токенами в настройках сервера. Для Spotify нужен настроенный Redirect URI.</p><p class="server-address">${escapeHtml(api.base)}</p><button class="text-button" data-action="logout">Выйти / сменить сервер ${icon("arrow")}</button>`,
   );
 }
 async function spotify(button) {
@@ -475,9 +550,7 @@ function updatePlayer() {
   $("#like-track").setAttribute("aria-pressed", String(!!isFavorite(track)));
   $("#like-track").setAttribute(
     "aria-label",
-    isFavorite(track)
-      ? "Удалить из избранного на устройстве"
-      : "Сохранить на этом устройстве",
+    isFavorite(track) ? "Убрать из любимых треков" : "В любимые треки",
   );
   $("#progress").max = player.duration || 0;
   $("#progress").value = player.audio.currentTime || 0;
@@ -503,19 +576,23 @@ function updatePlayer() {
     $("#mobile-time").textContent =
       `${time(player.audio.currentTime)} / ${time(player.duration)}`;
   }
+  highlightLyrics();
 }
-function toggleFavorite() {
+async function toggleFavorite() {
   const track = player.current;
   if (!track) return;
-  let items = favorites();
-  if (isFavorite(track)) {
-    items = items.filter((t) => trackKey(t) !== trackKey(track));
-    toast("Удалено из избранного на устройстве");
-  } else {
-    items.unshift(track);
-    toast("Сохранено на этом устройстве");
+  let result;
+  try {
+    result = await api.toggleFavorite(track);
+    await syncFavorites();
+  } catch (error) {
+    return toast(error.message);
   }
-  write("myplayer-favorites", items.slice(0, 1000));
+  toast(
+    result.favorite
+      ? "Добавлено в любимые треки — на всех устройствах"
+      : "Убрано из любимых треков",
+  );
   updatePlayer();
   renderSidebar();
   if (state.page === "favorites") renderContent();
@@ -525,9 +602,134 @@ function currentTrackModal() {
   if (!track) return toast("Сначала выбери трек в библиотеке");
   $("#modal-body").dataset.track = trackKey(track);
   showModal(
-    `<span class="eyebrow">СЕЙЧАС В ПЛЕЕРЕ · ${escapeHtml(names[track.source])}</span><section class="playlist-hero">${trackImage(track)}<div><h2>${escapeHtml(track.title)}</h2><p>${escapeHtml(track.artist)}</p></div></section><label class="seek-label" for="mobile-seek">Позиция трека <span id="mobile-time"></span></label><input id="mobile-seek" type="range" min="0" max="${player.duration}" value="${player.audio.currentTime}" aria-label="Позиция трека"><div class="modal-playback"><button class="icon-button" data-action="previous" aria-label="Предыдущий">${icon("next").replace("<svg ", '<svg style="transform:rotate(180deg)" ')}</button><button class="primary-button" data-action="toggle-audio"></button><button class="icon-button" data-action="next" aria-label="Следующий" ${player.index >= player.queue.length - 1 && !player.shuffle ? "disabled" : ""}>${icon("next")}</button></div>`,
+    `<span class="eyebrow">СЕЙЧАС В ПЛЕЕРЕ · ${escapeHtml(names[track.source])}</span><section class="playlist-hero">${trackImage(track)}<div><h2>${escapeHtml(track.title)}</h2><p>${escapeHtml(track.artist)}</p></div></section><button class="text-button" data-action="lyrics">Текст трека ${icon("arrow")}</button><label class="seek-label" for="mobile-seek">Позиция трека <span id="mobile-time"></span></label><input id="mobile-seek" type="range" min="0" max="${player.duration}" value="${player.audio.currentTime}" aria-label="Позиция трека"><div class="modal-playback"><button class="icon-button" data-action="previous" aria-label="Предыдущий">${icon("next").replace("<svg ", '<svg style="transform:rotate(180deg)" ')}</button><button class="primary-button" data-action="toggle-audio"></button><button class="icon-button" data-action="next" aria-label="Следующий" ${player.index >= player.queue.length - 1 && !player.shuffle ? "disabled" : ""}>${icon("next")}</button></div>`,
   );
   updatePlayer();
+}
+/* ---------- История прослушиваний и «продолжить с места остановки» ---------- */
+function flushPlayed(completed = false) {
+  if (!lastPlayed) return;
+  const { track, position } = lastPlayed;
+  lastPlayed = null;
+  const duration = player.duration || (track.duration_ms || 0) / 1000;
+  api.scrobble(track, { position, duration, completed });
+  if (completed) state.positions.delete(positionKey(track));
+  else if (position > 10) {
+    state.positions.set(positionKey(track), position);
+    api.savePosition(track, position);
+  }
+}
+player.audio.addEventListener("timeupdate", () => {
+  const track = player.current;
+  if (!track) return;
+  const key = positionKey(track);
+  if (lastPlayed && lastPlayed.key !== key) flushPlayed(false);
+  if (!lastPlayed || lastPlayed.key !== key)
+    lastPlayed = { key, track, position: 0 };
+  lastPlayed.position = player.audio.currentTime || 0;
+  const now = Date.now();
+  if (player.playing && lastPlayed.position > 10 && now - lastPosSent > 15000) {
+    lastPosSent = now;
+    state.positions.set(key, lastPlayed.position);
+    api.savePosition(track, lastPlayed.position);
+  }
+});
+player.addEventListener("trackend", ({ detail }) => {
+  lastPlayed = { key: positionKey(detail.track), track: detail.track, position: detail.position };
+  flushPlayed(true);
+});
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden && lastPlayed) flushPlayed(false);
+});
+function resumePosition(track) {
+  const saved = state.positions.get(positionKey(track)) || 0;
+  const duration = (track.duration_ms || 0) / 1000;
+  return saved >= 10 && (!duration || saved < duration - 15) ? saved : 0;
+}
+function startTrack(items, index) {
+  const track = items[index];
+  state.history = [
+    track,
+    ...state.history.filter((t) => trackKey(t) !== trackKey(track)),
+  ].slice(0, 30);
+  const resume = resumePosition(track);
+  if (resume) toast(`Продолжаем с ${time(resume)}`);
+  player.select(items, index, resume);
+  closeModal();
+}
+/* ---------- Тексты (Lrclib) ---------- */
+async function lyricsModal() {
+  const track = player.current;
+  if (!track) return toast("Сначала выбери трек в библиотеке");
+  lyricsActive = -2;
+  showModal(
+    `<span class="eyebrow">ТЕКСТ · ${escapeHtml(names[track.source] || track.source)}</span><h2>${escapeHtml(track.title)}</h2><p>${escapeHtml(track.artist)}</p><div class="lyrics" id="lyrics-body">${busy("Ищем текст…")}</div>`,
+  );
+  try {
+    const data = await api.lyrics(track);
+    const box = $("#lyrics-body");
+    if (!box) return;
+    if (!data.synced && !data.plain) {
+      box.innerHTML = "<p>Текста для этого трека не нашлось.</p>";
+      return;
+    }
+    const lines = String(data.synced || data.plain)
+      .split(/\r?\n/)
+      .map((line) => {
+        const m = line.match(/^\[(\d+):(\d+)(?:[.:](\d+))?\]\s*(.*)$/);
+        return {
+          t: m ? Number(m[1]) * 60 + Number(m[2]) + Number(`0.${m[3] || "0"}`) : null,
+          text: (m ? m[4] : line).trim(),
+        };
+      })
+      .filter((line) => line.text);
+    box.innerHTML = lines
+      .map((line) =>
+        line.t == null
+          ? `<p>${escapeHtml(line.text)}</p>`
+          : `<p data-t="${line.t.toFixed(2)}">${escapeHtml(line.text)}</p>`,
+      )
+      .join("");
+    if (!data.synced)
+      box.insertAdjacentHTML(
+        "beforeend",
+        '<p class="lyrics-note">Несинхронный текст — просто список строк.</p>',
+      );
+    highlightLyrics(true);
+  } catch (error) {
+    const box = $("#lyrics-body");
+    if (box) box.innerHTML = `<p>${escapeHtml(error.message)}</p>`;
+  }
+}
+function highlightLyrics(force = false) {
+  const box = $("#lyrics-body");
+  if (!box || !$("#modal").open) return;
+  const lines = $$("p[data-t]", box);
+  if (!lines.length) return;
+  const at = (player.audio.currentTime || 0) + 0.5;
+  let active = -1;
+  lines.forEach((line, i) => {
+    if (Number(line.dataset.t) <= at) active = i;
+  });
+  if (active === lyricsActive && !force) return;
+  lyricsActive = active;
+  lines.forEach((line, i) => line.classList.toggle("active", i === active));
+  if (active >= 0)
+    lines[active].scrollIntoView({ block: "center", behavior: "smooth" });
+}
+async function historyModal() {
+  showModal(`<h2>Недавно прослушано</h2>${busy()}`);
+  try {
+    const data = await api.history();
+    const items = data.items || [];
+    showModal(
+      `<h2>Недавно прослушано</h2><p class="settings-note">Общая история со всех устройств.</p>${items.length ? trackList(items, "history") : "<p>Пока пусто. Здесь появятся треки, которые ты слушал.</p>"}`,
+    );
+  } catch (error) {
+    showModal(
+      `<h2>Недавно в плеере</h2>${state.history.length ? trackList(state.history, "history") : `<p>${escapeHtml(error.message)}</p>`}`,
+    );
+  }
 }
 
 document.addEventListener("click", (event) => {
@@ -560,14 +762,7 @@ document.addEventListener("click", (event) => {
   if (button.dataset.queue) {
     const items = queues.get(button.dataset.queue);
     const index = Number(button.dataset.index);
-    if (items?.[index]) {
-      state.history = [
-        items[index],
-        ...state.history.filter((t) => trackKey(t) !== trackKey(items[index])),
-      ].slice(0, 30);
-      player.select(items, index);
-      closeModal();
-    }
+    if (items?.[index]) startTrack(items, index);
   }
   const action =
     button.dataset.action ||
@@ -610,6 +805,13 @@ document.addEventListener("click", (event) => {
     case "favorite":
       toggleFavorite();
       break;
+    case "lyrics":
+      lyricsModal();
+      break;
+    case "check-status":
+      button.disabled = true;
+      checkStatus().then(settings);
+      break;
     case "toggle-audio":
       player.toggle();
       break;
@@ -631,9 +833,7 @@ document.addEventListener("click", (event) => {
       currentTrackModal();
       break;
     case "history":
-      showModal(
-        `<h2>Недавно в плеере</h2>${state.history.length ? trackList(state.history, "history") : "<p>Здесь появятся треки, которые ты включишь в этом сеансе.</p>"}`,
-      );
+      historyModal();
       break;
     case "device":
       showModal(

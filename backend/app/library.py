@@ -69,6 +69,9 @@ async def refresh(client: httpx.AsyncClient, source: str | None = None) -> dict:
             result[name] = f"error: {e}"
         except Exception as e:
             result[name] = f"error: {e.__class__.__name__}: {e}"
+    from .db import store_set
+
+    store_set("last_refresh", {"ts": now(), "sources": result})
     return result
 
 

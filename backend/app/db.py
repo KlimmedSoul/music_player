@@ -67,6 +67,36 @@ CREATE TABLE IF NOT EXISTS store (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+
+-- глобальные любимые треки поверх библиотек сервисов
+CREATE TABLE IF NOT EXISTS favorites (
+    dedup_key TEXT NOT NULL,
+    track_source TEXT NOT NULL,
+    track_ext TEXT NOT NULL,
+    added_at REAL NOT NULL,
+    UNIQUE (track_source, track_ext)
+);
+
+-- прослушивания: «недавние» и основа для умных плейлистов в будущем
+CREATE TABLE IF NOT EXISTS plays (
+    id INTEGER PRIMARY KEY,
+    track_source TEXT NOT NULL,
+    track_ext TEXT NOT NULL,
+    played_at REAL NOT NULL,
+    position_s REAL NOT NULL DEFAULT 0,
+    duration_s REAL NOT NULL DEFAULT 0,
+    completed INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_plays_time ON plays(played_at DESC);
+
+-- на чём остановился: «продолжить слушать» с любого устройства
+CREATE TABLE IF NOT EXISTS positions (
+    track_source TEXT NOT NULL,
+    track_ext TEXT NOT NULL,
+    position_s REAL NOT NULL,
+    updated_at REAL NOT NULL,
+    PRIMARY KEY (track_source, track_ext)
+);
 """
 
 

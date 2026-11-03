@@ -354,3 +354,11 @@ dialog .playlist-hero h2 { font-size: 23px; letter-spacing: -.7px; }
   .login-stamp { letter-spacing: 1px; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
+/* Тексты треков и здоровье источников */
+.lyrics { display: grid; gap: 8px; margin-top: 14px; max-height: 45vh; overflow: auto; overscroll-behavior: contain; }
+.lyrics p { margin: 0; font-size: 15px; line-height: 1.45; color: #888; transition: color .2s; }
+.lyrics p.active { color: var(--ink); font-weight: 700; }
+.lyrics-note { font-size: 10px; color: var(--muted); }
+.status-dot.error { background: repeating-linear-gradient(45deg, #111 0 2px, #fff 2px 4px); }
+.sync-result.ok { color: var(--muted); }
+.sync-result.error { font-weight: 700; }

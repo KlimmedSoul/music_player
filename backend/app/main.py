@@ -9,10 +9,12 @@ from pydantic import BaseModel
 
 from .auth import auth_required, create_token
 from .artwork import find_cover
+from . import activity
 from .config import settings
 from .connectors.base import SourceUnavailable
 from .db import db
 from . import library
+from .lyrics import find_lyrics
 from .stream import is_valid_token, proxy_stream
 
 
@@ -61,8 +63,85 @@ def status():
     out = {}
     for name, conn in library.CONNECTORS.items():
         out[name] = "configured" if conn.is_configured() else "not_configured"
-    out["spotify_logged_in"] = bool(store_get("spotify_tokens"))
-    return {"sources": out}
+    return {
+        "sources": out,
+        "spotify_logged_in": bool(store_get("spotify_tokens")),
+        "last_refresh": store_get("last_refresh"),
+    }
+
+
+# ---------- Избранное / история / «продолжить слушать» ----------
+class TrackBody(BaseModel):
+    source: str
+    external_id: str
+
+
+class PlayBody(TrackBody):
+    position_s: float = 0
+    duration_s: float = 0
+    completed: bool = False
+
+
+class PositionBody(TrackBody):
+    position_s: float
+
+
+def _known_track(body: TrackBody):
+    row = db().execute(
+        "SELECT 1 FROM tracks WHERE source=? AND external_id=?",
+        (body.source, body.external_id),
+    ).fetchone()
+    if not row:
+        raise HTTPException(404, "трек не найден в библиотеке")
+
+
+@app.post("/favorites/toggle", dependencies=[auth_required])
+def favorite_toggle(body: TrackBody):
+    _known_track(body)
+    return {"favorite": activity.toggle_favorite(body.source, body.external_id)}
+
+
+@app.get("/favorites", dependencies=[auth_required])
+def favorites():
+    return activity.list_favorites()
+
+
+@app.post("/plays", dependencies=[auth_required])
+def play(body: PlayBody):
+    _known_track(body)
+    return activity.record_play(
+        body.source, body.external_id,
+        max(0, body.position_s), max(0, body.duration_s), body.completed,
+    )
+
+
+@app.get("/history", dependencies=[auth_required])
+def history(limit: int = 30):
+    return activity.list_history(max(1, min(limit, 100)))
+
+
+@app.post("/positions", dependencies=[auth_required])
+def position(body: PositionBody):
+    _known_track(body)
+    return activity.report_position(body.source, body.external_id, body.position_s)
+
+
+@app.get("/positions", dependencies=[auth_required])
+def positions():
+    return activity.list_positions()
+
+
+@app.get("/lyrics", dependencies=[auth_required])
+async def lyrics(
+    request: Request,
+    title: str = Query(min_length=1, max_length=200),
+    artist: str = Query(min_length=0, max_length=200),
+    duration_s: float = Query(0, ge=0, le=86400),
+):
+    try:
+        return await find_lyrics(client(request), title, artist, duration_s)
+    except httpx.HTTPError:
+        raise HTTPException(502, "Сервер текстов не отвечает. Попробуй позже.")
 
 
 @app.post("/library/refresh", dependencies=[auth_required])

@@ -167,6 +167,53 @@ class MusicAPI extends EventTarget {
       artist: String(track.artist || "").slice(0, 200),
     })}`, { timeout: 12000, ...options });
   }
+  lyrics(track, options) {
+    return this.request(`/lyrics?${new URLSearchParams({
+      title: String(track.title || "").slice(0, 200),
+      artist: String(track.artist || "").slice(0, 200),
+      duration_s: Math.round((track.duration_ms || 0) / 1000),
+    })}`, { timeout: 20000, ...options });
+  }
+  favorites(options) {
+    return this.request("/favorites", options);
+  }
+  toggleFavorite(track, options) {
+    return this.request("/favorites/toggle", {
+      ...options,
+      method: "POST",
+      body: { source: track.source, external_id: String(track.external_id) },
+    });
+  }
+  history(options) {
+    return this.request(`/history?${new URLSearchParams({ limit: 30 })}`, options);
+  }
+  scrobble(track, { position = 0, duration = 0, completed = false }) {
+    return this.request("/plays", {
+      method: "POST",
+      timeout: 15000,
+      body: {
+        source: track.source,
+        external_id: String(track.external_id),
+        position_s: Math.round(position),
+        duration_s: Math.round(duration),
+        completed,
+      },
+    }).catch(() => {});
+  }
+  savePosition(track, position) {
+    return this.request("/positions", {
+      method: "POST",
+      timeout: 15000,
+      body: {
+        source: track.source,
+        external_id: String(track.external_id),
+        position_s: Math.round(position),
+      },
+    }).catch(() => {});
+  }
+  positions(options) {
+    return this.request("/positions", options);
+  }
   spotify() {
     return this.request("/auth/spotify/start");
   }
